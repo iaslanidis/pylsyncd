@@ -1,0 +1,7 @@
+Basic Installation
+==================
+
+  There is currently no installation procedure. For now, simply copy the script
+to /usr/local/bin/ and configure it properly. In the future, this script will
+get installed under /usr/bin/.
+
