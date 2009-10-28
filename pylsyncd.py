@@ -232,10 +232,28 @@ def GenerateRecursiveList(path):
 
 ##### BEGIN: Worker Synchronization Threads #####
 
-def do_work(items, server):
-  logging.debug('%s - Processing %d items' % (server, len(items)))
-  for item in items:
-    synchronize(item + '/', server.path + item, opts=RSYNC_OPTIONS)
+def optimize(items, server):
+  numitems = len(items)
+  logging.debug('%s - Optimizing %d items' % (server, numitems))
+  items = sorted(items) # least specific path first
+  items = filter(lambda x: os.path.exists(x), items)
+  logging.debug('%s - Optimizing %d items is complete. Remaining items: %d'
+      % (server, numitems, len(items)))
+  return items
+
+def process(items, server):
+  items = optimize(items, server)
+
+  logging.info('%s - Processing %d items' % (server, len(items)))
+  items = filter(lambda x: not synchronize(x + '/', server.path + x,
+      opts=RSYNC_OPTIONS), items)
+
+  if len(items):
+    logging.error('%s - Error synchronizing %d items. Keeping for next run...'
+        % (server, len(items)))
+
+  return items
+
 def worker(monitor, q, path, server):
   # Wait until all paths are watched by inotify
   monitor.wait()
@@ -255,14 +273,14 @@ def worker(monitor, q, path, server):
       if item not in items:
         items.append(item)
     except Queue.Empty:
-      # timed out
-      do_work(items, server)
-      items = []
+      if len(items):
+        items = process(items, server)
       timer.reset()
       continue
     if len(items) >= MAX_CHANGES:
-      do_work(items, server)
-      items = []
+      logging.info('%s - MAX_CHANGES=%d reached, processing items now...'
+          % (server, MAX_CHANGES))
+      items = process(items, server)
       timer.reset()
 
 ##### END:   Worker Synchronization Threads #####
