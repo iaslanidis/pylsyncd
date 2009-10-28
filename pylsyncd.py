@@ -219,16 +219,7 @@ def Monitor(monitor, path):
   wm.add_watch(path, MONITOR_EV, rec=True, auto_add=True)
   logging.info('Monitor initialized!')
   monitor.set()
-
-  while True:
-    try:
-      notifier.process_events()
-      if notifier.check_events():
-        notifier.read_events()
-    except KeyboardInterrupt:
-      logging.warning('Received SIGINT, exiting...')
-      notifier.stop()
-      return
+  notifier.loop()
 
 ##### END:   Monitor #####
 
