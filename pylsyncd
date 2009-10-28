@@ -1,0 +1,56 @@
+#!/usr/bin/env python
+
+# (C) Copyright 2009 Ioannis Aslanidis
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Library General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+
+import Queue
+import sys
+import logging
+import threading
+
+from pylsyncd import *
+
+
+# Function that explains how to use the script
+def usage():
+  print 'Use: %s <directory to watch> <synchronization destinations>' \
+      % (sys.argv[0],)
+  print 'It is strongly advised to use absolute paths'
+  print 'Example: %s /file/data/cust/yesfm \
+         file02.priv file01.tlf2.mad.flumotion.net' % (sys.argv[0],)
+  print '''
+  rsync result will be:
+      source = /file/data/cust/yesfm/
+      destination = (file02.priv:/file/data/cust/yesfm/
+                     file01.tlf2.mad.flumotion.net:/file/data/cust/yesfm/)
+  '''
+
+
+if len(sys.argv) < 3:
+  usage()
+  sys.exit()
+logging.basicConfig(level=logging.DEBUG)
+path, servers = sys.argv[1], sys.argv[2:]
+num_worker_threads = len(sys.argv) - 2
+logging.debug('Total additional threads: %s' % num_worker_threads)
+for server in servers:
+  q = Queue.Queue(0) # infinite size
+  queues.append(q)
+  t = threading.Thread(target=worker, args=(q, server))
+  t.setDaemon(True)
+  t.start()
+Monitor(path)
+

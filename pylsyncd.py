@@ -1,4 +1,4 @@
-#!/usr/bin/python
+# -*- coding: utf-8 -*-
 
 # (C) Copyright 2009 Ioannis Aslanidis
 #
@@ -173,20 +173,6 @@ class PEvent(pyinotify.ProcessEvent):
 
 ##### BEGIN: Functions #####
 
-# Function that explains how to use the script
-def usage():
-  print 'Use: %s <directory to watch> <synchronization destinations>' \
-      % (sys.argv[0],)
-  print 'It is strongly advised to use absolute paths'
-  print 'Example: %s /file/data/cust/<directory> \
-         file02.priv file03.priv' % (sys.argv[0],)
-  print '''
-  rsync result will be:
-      source = /file/data/cust/<directory>/
-      destination = (file02.priv:/file/data/cust/<directory>/
-                     file03.priv:/file/data/cust/<directory>/)
-  '''
-
 # Function that synchronizes non-recursively a directory and its contents
 def synchronize(src, dst, opts=None):
   if src == None or dst == None:
@@ -254,20 +240,4 @@ def Monitor(path):
     return
 
 ##### END:   Monitor #####
-
-if __name__ == '__main__':
-  if len(sys.argv) < 3:
-    usage()
-    sys.exit()
-  logging.basicConfig(level=logging.DEBUG)
-  path, servers = sys.argv[1], sys.argv[2:]
-  num_worker_threads = len(sys.argv) - 2
-  logging.debug('Total additional threads: %s' % num_worker_threads)
-  for server in servers:
-    q = Queue.Queue(0) # infinite size
-    queues.append(q)
-    t = threading.Thread(target=worker, args=(q, server))
-    t.setDaemon(True)
-    t.start()
-  Monitor(path)
 
