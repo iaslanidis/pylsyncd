@@ -193,15 +193,6 @@ def synchronize(src, dst, opts=None):
     return subprocess.call(cmd, shell=True) == 0
   return False
 
-# Function that generates a recursive list of subdirectories given the parent
-def GenerateRecursiveList(path):
-    dirlist = [subdir[0] for subdir in os.walk(path)]
-    return dirlist
-
-##### END:   Functions #####
-
-##### BEGIN: Worker Synchronization Threads #####
-
 def optimize(items, server):
   numitems = len(items)
   logging.debug('%s - Optimizing %d items' % (server, numitems))
@@ -223,6 +214,15 @@ def process(items, server):
         % (server, len(items)))
 
   return items
+
+# Function that generates a recursive list of subdirectories given the parent
+def GenerateRecursiveList(path):
+    dirlist = [subdir[0] for subdir in os.walk(path)]
+    return dirlist
+
+##### END:   Functions #####
+
+##### BEGIN: Worker Synchronization Threads #####
 
 def worker(monitor, q, path, server):
   # Wait until all paths are watched by inotify
