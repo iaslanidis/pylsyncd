@@ -61,6 +61,45 @@ queues = []
 
 ##### BEGIN: Class definitions #####
 
+# Server definition
+class Server(object):
+  def __init__(self, s):
+    self._target = s
+
+  def __str__(self):
+    return self.name
+
+  @property
+  def name(self):
+    s = self._target
+
+    # [USER@]HOST::DEST --> HOST
+    if '::' in s.split('/', 1)[0]:
+      return s.split('@', 1)[-1].split('::', 1)[0]
+
+    # rsync://[USER@]HOST[:PORT]/DEST --> HOST
+    if s.startswith('rsync://'):
+      return s.split('rsync://', 1)[1].split('@', 1)[-1].split(':', 1)[0].split('/', 1)[0]
+
+    # [USER@]HOST:DEST --> HOST
+    return s.split('@', 1)[-1].split(':', 1)[0]
+
+  @property
+  def path(self):
+    s = self._target
+
+    # rsync://[USER@]HOST[:PORT]/DEST
+    # [USER@]HOST::DEST
+    hostpart = s.split('/', 1)[0]
+    if s.startswith('rsync://') or '::' in hostpart or ':' in hostpart:
+      if s.endswith('/'):
+        return s
+      else:
+        return s + '/'
+
+    # Assume [USER@]HOST without :DEST
+    return s + ':'
+
 # Simple timer implementation
 class Timer:
   def __init__(self):
@@ -195,7 +234,7 @@ def GenerateRecursiveList(path):
 def do_work(items, server):
   logging.debug('%s - Processing %d items' % (server, len(items)))
   for item in items:
-    synchronize(item + '/', server + ':' + item, opts=RSYNC_OPTIONS)
+    synchronize(item + '/', server.path + item, opts=RSYNC_OPTIONS)
 
 def worker(q,server):
   items, timer = [], Timer()

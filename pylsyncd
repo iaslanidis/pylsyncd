@@ -26,24 +26,42 @@ from pylsyncd import *
 
 # Function that explains how to use the script
 def usage():
-  print 'Use: %s <directory to watch> <synchronization destinations>' \
+  print 'Use: %s <directory to watch> <rsync synchronization destinations>' \
       % (sys.argv[0],)
-  print 'It is strongly advised to use absolute paths'
-  print 'Example: %s /file/data/cust/yesfm \
-         file02.priv file01.tlf2.mad.flumotion.net' % (sys.argv[0],)
   print '''
-  rsync result will be:
-      source = /file/data/cust/yesfm/
-      destination = (file02.priv:/file/data/cust/yesfm/
-                     file01.tlf2.mad.flumotion.net:/file/data/cust/yesfm/)
-  '''
+  Examples:
+
+      %s . srv2.example.com srv3.example.net srv4.example.org
+
+        source = "." (current working directory)
+        target = homedir of current user at remote servers
+                 srv2.example.com, srv3.example.net and srv4.example.org
+        method = rsync on top of remote shell protocoll, eg. rsh/ssh.
+
+
+      %s /var/www www-data@srv2.example.com:/var/www
+
+        source = /var/www
+        target = /var/www at remote server srv2.example.com, user www-data
+        method = rsync on top of remote shell protocoll, eg. rsh/ssh.
+
+
+      %s /var/www srv2.example.com::webdata
+
+        source = /var/www
+        target = module webdata at remote server srv2.example.com
+        method = rsync protocoll
+
+  For more information on destination notation see man rsync(1).
+  ''' % (sys.argv[0], sys.argv[0], sys.argv[0])
 
 
 if len(sys.argv) < 3:
   usage()
   sys.exit()
 logging.basicConfig(level=logging.DEBUG)
-path, servers = sys.argv[1], sys.argv[2:]
+path = sys.argv[1]
+servers = [Server(i) for i in sys.argv[2:]]
 num_worker_threads = len(sys.argv) - 2
 logging.debug('Total additional threads: %s' % num_worker_threads)
 for server in servers:
