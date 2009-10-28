@@ -127,81 +127,54 @@ class Timer:
 # This class inherits from ProcessEvents and overloads the interesting
 # methods
 class PEvent(pyinotify.ProcessEvent):
-#
-# IN_ATTRIB: Sync the parent directory.
-# IN_CLOSE_WRITE: Sync the parent directory.
-# IN_CREATE: Only if it is a directory, sync the parent directory and add
-#            watches recursively inside the created directory.
-# IN_DELETE: Sync the parent directory, attempt to drop the watch.
-# IN_MOVE_SELF: Only if it is a directory, add watces recursively into this
-#               directory. There seems to way to drop older handlers, but that
-#               should not be a problem if the handler limit is high enough.
-# IN_MOVED_FROM: For files, just sync the parent directory. For directories, it
-#                is required to also capture and associate with the IN_MOVED_TO
-#                event, so that an ssh move can be performed.
-# IN_MOVED_TO: For files, just sync the parent directory. For directories, see
-#              the IN_MOVED_FROM description.
-# Alternative for IN_MOVED_{FROM,TO}: Perform the IN_MOVED_FROM with a sync
-# that deletes the origin files and add recursive handlers to the IN_MOVED_TO
-# and all the children subdirectories to be synced, in a parent first, child
-# later fashion. We do use this alternative instead.
-#
-  def process_IN_ATTRIB(self, event):
-    self.process_default(event)
-  def process_IN_CLOSE_WRITE(self, event):
-    self.process_default(event)
+
   def process_IN_CREATE(self, event):
-    if (event.dir):
-      # Add handle if the event is a new directory
-      subdir = os.path.join(event.path, event.name)
+    if event.dir:
+      self.process_directory(event)
+    self.process_default(event)
+
+  def process_IN_MOVE_SELF(self, event):
+    if event.dir:
+      self.process_directory(event)
+    self.process_default(event)
+
+  def process_IN_MOVED_FROM(self, event):
+    if event.dir:
+      self.process_directory(event)
+    self.process_default(event)
+
+  def process_IN_MOVED_TO(self, event):
+    if event.dir:
+      self.process_directory(event)
+    self.process_default(event)
+
+  def process_directory(self, event, caller=None):
+    # XXX This is a hack to work around a known issue XXX
+    #
+    # Pyinotify automatically creates watches, however this operation is not
+    # atomic. There is a small timeframe between adding a watch and
+    # effectively watching. Everything that happens before the watch is
+    # effecive will not create an event and can't be handled. This fix
+    # recursively adds a newly created or moved directory and all of it's
+    # subdirs to the queue. This way everything that happened in the above-
+    # mentioned timeframe will be catched.
+    #
+    # See http://trac.dbzteam.org/pyinotify/ticket/8 for more information.
+    if event.path == '.':
+      path = event.name
+    else:
+      # We might get an event with an empty name by process_IN_MOVE_SELF here.
+      # Avoid appending a needless path separator to get rid of duplicate entries
+      # in the queue (ie. "/foo/path" vs. "/foo/path/").
+      # Note: This should be faster than os.path.normpath() which has to parse
+      # the whole resulting string.
+      path = os.path.join(event.path, event.name) if len(event.name) else event.path
+
+    for subdir in GenerateRecursiveList(path):
       for q in queues:
         q.put(subdir)
-      for subsubdir in GenerateRecursiveList(subdir):
-        wm.add_watch(subsubdir, MONITOR_EV)
-        for q in queues:
-          q.put(subsubdir)
-        logging.debug('Added monitor for ' + subsubdir)
-      # Only sync if the creation is of a directory, files trigger the
-      # IN_CLOSE_WRITE event when they are saved
-      self.process_default(event)
-  def process_IN_DELETE(self, event):
-    if (event.dir):
-      # Remove the inotify handle from the directory recursively, nothing else
-      subdir = os.path.join(event.path, event.name)
-      # wm.rm_watch(event.wd, True)
-      logging.debug('Removed monitor for ' + subdir + \
-        ' and its subdirs recursively')
-    self.process_default(event)
-  def process_IN_IGNORED(self, event):
-    # Do not use this!
-    self.process_default(event)
-  def process_IN_MOVE_SELF(self, event):
-    # Only for directories
-    if (event.dir):
-      subdir = os.path.join(event.path, event.name)
-      for subsubdir in GenerateRecursiveList(subdir):
-        wm.add_watch(subsubdir, MONITOR_EV)
-        for q in queues:
-          q.put(subsubdir)
-        logging.debug('Added monitor for ' + subsubdir)
-    # self.process_default(event) # UNNEEDED, already done above for the parent
-  def process_IN_MOVED_FROM(self, event):
-    self.process_default(event)
-  def process_IN_MOVED_TO(self, event):
-    # Only for directories
-    if (event.dir):
-      subdir = os.path.join(event.path, event.name)
-      for subsubdir in GenerateRecursiveList(subdir):
-        wm.add_watch(subsubdir, MONITOR_EV)
-        for q in queues:
-          q.put(event.path)
-        logging.debug('Added monitor for ' + subsubdir)
-    self.process_default(event)
+
   def process_default(self, event):
-    # Let this class use the non-free variables as global
-    global queues
-    f = event.name and os.path.join(event.path, event.name) or event.path
-    # Add directory to mod_dirs
     for q in queues:
       q.put(event.path)
     logging.debug('pyinotify:%s' % event)
@@ -289,10 +262,8 @@ def worker(monitor, q, path, server):
 def Monitor(monitor, path):
   # Set up the inotify handler watcher
   notifier = pyinotify.Notifier(wm, PEvent())
-  # Add initial inotify handlers
-  for subdir in GenerateRecursiveList(path):
-    wm.add_watch(subdir, MONITOR_EV)
-    logging.debug('Added monitor for ' + subdir)
+  wm.add_watch(path, MONITOR_EV, rec=True, auto_add=True)
+  logging.info('Monitor initialized!')
   monitor.set()
 
   while True:
