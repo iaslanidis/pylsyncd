@@ -19,12 +19,13 @@
 import Queue
 import logging
 import os
-import pyinotify
 import random
 import subprocess
 import sys
 import threading
 import time
+
+import pyinotify
 
 ##### BEGIN: Global constants #####
 
