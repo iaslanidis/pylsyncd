@@ -220,6 +220,7 @@ def synchronize(src, dst, opts=None):
     assert False, "Both src and dst must be provided"
   if os.access(RSYNC_PATH, os.X_OK):
     cmd = ' '.join([RSYNC_PATH, opts, src, dst])
+    logging.debug('Executing: %s' % cmd)
     return subprocess.call(cmd, shell=True) == 0
   return False
 
