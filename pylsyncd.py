@@ -204,11 +204,7 @@ class PEvent(pyinotify.ProcessEvent):
     # Add directory to mod_dirs
     for q in queues:
       q.put(event.path)
-    # Debug prints
-    logging.debug('Event:     ' + event.maskname)
-    logging.debug('Directory: ' + str(event.dir))
-    logging.debug('Path:      ' + event.path)
-    logging.debug('File:      ' + event.name)
+    logging.debug('pyinotify:%s' % event)
 
 ##### END:   Class definitions #####
 
