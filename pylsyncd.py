@@ -128,52 +128,6 @@ class Timer:
 # methods
 class PEvent(pyinotify.ProcessEvent):
 
-  def process_IN_CREATE(self, event):
-    if event.dir:
-      self.process_directory(event)
-    self.process_default(event)
-
-  def process_IN_MOVE_SELF(self, event):
-    if event.dir:
-      self.process_directory(event)
-    self.process_default(event)
-
-  def process_IN_MOVED_FROM(self, event):
-    if event.dir:
-      self.process_directory(event)
-    self.process_default(event)
-
-  def process_IN_MOVED_TO(self, event):
-    if event.dir:
-      self.process_directory(event)
-    self.process_default(event)
-
-  def process_directory(self, event, caller=None):
-    # XXX This is a hack to work around a known issue XXX
-    #
-    # Pyinotify automatically creates watches, however this operation is not
-    # atomic. There is a small timeframe between adding a watch and
-    # effectively watching. Everything that happens before the watch is
-    # effecive will not create an event and can't be handled. This fix
-    # recursively adds a newly created or moved directory and all of it's
-    # subdirs to the queue. This way everything that happened in the above-
-    # mentioned timeframe will be catched.
-    #
-    # See http://trac.dbzteam.org/pyinotify/ticket/8 for more information.
-    if event.path == '.':
-      path = event.name
-    else:
-      # We might get an event with an empty name by process_IN_MOVE_SELF here.
-      # Avoid appending a needless path separator to get rid of duplicate entries
-      # in the queue (ie. "/foo/path" vs. "/foo/path/").
-      # Note: This should be faster than os.path.normpath() which has to parse
-      # the whole resulting string.
-      path = os.path.join(event.path, event.name) if len(event.name) else event.path
-
-    for subdir in GenerateRecursiveList(path):
-      for q in queues:
-        q.put(subdir)
-
   def process_default(self, event):
     for q in queues:
       q.put(event.path)
