@@ -297,14 +297,16 @@ def Monitor(monitor, path):
     wm.add_watch(subdir, MONITOR_EV)
     logging.debug('Added monitor for ' + subdir)
   monitor.set()
-  try:
-    while 1:
+
+  while True:
+    try:
       notifier.process_events()
       if notifier.check_events():
         notifier.read_events()
-  except KeyboardInterrupt:
-    notifier.stop()
-    return
+    except KeyboardInterrupt:
+      logging.warning('Received SIGINT, exiting...')
+      notifier.stop()
+      return
 
 ##### END:   Monitor #####
 
