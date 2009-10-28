@@ -44,7 +44,8 @@ MONITOR_EV = pyinotify.EventsCodes.ALL_FLAGS['IN_CREATE']      | \
              pyinotify.EventsCodes.ALL_FLAGS['IN_CLOSE_WRITE']
 # rsync for directory content
 RSYNC_PATH = "/usr/bin/rsync"
-RSYNC_OPTIONS = '-HpltogDd --delete'
+RSYNC_OPTIONS       = '-HpltogDd --delete --numeric-ids'
+RSYNC_OPTIONS_INIT  = '-HpltogDr --delete --numeric-ids --human-readable --stats' # Initial run (recursive)
 
 ##### END:   Global constants #####
 
@@ -235,8 +236,15 @@ def do_work(items, server):
   logging.debug('%s - Processing %d items' % (server, len(items)))
   for item in items:
     synchronize(item + '/', server.path + item, opts=RSYNC_OPTIONS)
+def worker(monitor, q, path, server):
+  # Wait until all paths are watched by inotify
+  monitor.wait()
 
-def worker(q,server):
+  logging.info('%s - Starting initial sync' % server)
+  if not synchronize(path, server.path, opts=RSYNC_OPTIONS_INIT):
+    logging.error('%s - Initial sync failed. Removing server!' % server)
+    return
+
   items, timer = [], Timer()
   timer.start(TIMER_LIMIT)
   while True:
@@ -263,13 +271,14 @@ def worker(q,server):
 
 # Function that adds the inotify event handlers to the directories and defines
 # the event processor
-def Monitor(path):
+def Monitor(monitor, path):
   # Set up the inotify handler watcher
   notifier = pyinotify.Notifier(wm, PEvent())
   # Add initial inotify handlers
   for subdir in GenerateRecursiveList(path):
     wm.add_watch(subdir, MONITOR_EV)
     logging.debug('Added monitor for ' + subdir)
+  monitor.set()
   try:
     while 1:
       notifier.process_events()

@@ -64,11 +64,15 @@ path = sys.argv[1]
 servers = [Server(i) for i in sys.argv[2:]]
 num_worker_threads = len(sys.argv) - 2
 logging.debug('Total additional threads: %s' % num_worker_threads)
+
+monitor = threading.Event() # Synchronize worker threads with Monitor
+
 for server in servers:
   q = Queue.Queue(0) # infinite size
   queues.append(q)
-  t = threading.Thread(target=worker, args=(q, server))
+  t = threading.Thread(target=worker, args=(monitor, q, path, server))
   t.setDaemon(True)
   t.start()
-Monitor(path)
+
+Monitor(monitor, path)
 
