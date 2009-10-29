@@ -26,6 +26,7 @@ import threading
 import time
 
 import pyinotify
+pyinotify.log.setLevel(0)
 
 ##### BEGIN: Global constants #####
 
