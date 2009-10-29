@@ -128,10 +128,27 @@ class Timer:
 # methods
 class PEvent(pyinotify.ProcessEvent):
 
-  def process_default(self, event):
-    for q in queues:
-      q.put(event.path)
-    logging.debug('pyinotify:%s' % event)
+  def process_IN_MOVED_TO(self, event):
+    # Recursively add watches to dirs moved in from a not watched source
+    if event.dir and not hasattr(event, 'src_pathname'):
+      wm.add_watch(event.path, MONITOR_EV, rec=True, auto_add=True)
+
+    # Always queue the whole subtree after a move/rename
+    self.process_default(event, rec=True)
+
+  def process_default(self, event, rec=False):
+    if rec:
+      if event.path == '.' and len(event.name):
+        path = event.name
+      else:
+        # We can't use event.pathname here because it breaks relative paths
+        path = os.path.join(event.path, event.name)
+      for subdir in GenerateRecursiveList(path):
+        for q in queues:
+          q.put(subdir)
+    else:
+      for q in queues:
+        q.put(event.path)
 
 ##### END:   Class definitions #####
 
@@ -171,8 +188,11 @@ def process(items, server):
 
 # Function that generates a recursive list of subdirectories given the parent
 def GenerateRecursiveList(path):
-    dirlist = [subdir[0] for subdir in os.walk(path)]
-    return dirlist
+  path = os.path.normpath(path)
+  if path == '.':
+    return [subdir[0][2:] for subdir in os.walk(path)]
+  else:
+    return [subdir[0] for subdir in os.walk(path)]
 
 ##### END:   Functions #####
 
