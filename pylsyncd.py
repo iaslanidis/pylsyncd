@@ -45,8 +45,8 @@ MONITOR_EV = pyinotify.EventsCodes.ALL_FLAGS['IN_CREATE']      | \
              pyinotify.EventsCodes.ALL_FLAGS['IN_CLOSE_WRITE']
 # rsync for directory content
 RSYNC_PATH = "/usr/bin/rsync"
-RSYNC_OPTIONS       = '-HpltogDd --delete --numeric-ids'
-RSYNC_OPTIONS_INIT  = '-HpltogDr --delete --numeric-ids --human-readable --stats' # Initial run (recursive)
+RSYNC_OPTIONS           = '-HpltogDd --delete'
+RSYNC_OPTIONS_RECURSIVE = '-HpltogDr --delete'
 
 ##### END:   Global constants #####
 
@@ -102,6 +102,64 @@ class Server(object):
     # Assume [USER@]HOST without :DEST
     return s + ':'
 
+class Item(object):
+  def __init__(self, path, recursive=False):
+    self.path = path
+    self.recursive = recursive
+
+  def __repr__(self):
+    return '<Item path=%s recursive=%s>' % (self.path, self.recursive)
+
+class ItemQueue(object):
+  def __init__(self, server):
+    self.items = []
+    self.server = server
+
+  def __repr__(self):
+    return '<ItemQueue server=%s numitems=%d>' % (self.server, len(self.items))
+
+  def __len__(self):
+    return len(self.items)
+
+  def add(self, item):
+    for idx, i in enumerate(self.items):
+      if i.path == item.path:
+        if item.recursive and not i.recursive:
+          # Prefer the recursive item
+          self.items[idx] = item
+        return
+    self.items.append(item)
+
+  def optimize(self):
+    numitems = len(self.items)
+    logging.debug('%s - Optimizing %d items' % (self.server, numitems))
+
+    # Least specific path first
+    self.items.sort(lambda x,y: len(x.path) - len(y.path))
+
+    # Find items with the recursive flag and get rid of all queued subtrees
+    for parent in filter(lambda x: x.recursive, self.items):
+      self.items = filter(lambda x: is_subdir(parent.path, x.path), self.items)
+
+    # Get rid of deleted items
+    self.items = filter(lambda x: os.path.exists(x.path), self.items)
+
+    logging.debug('%s - Optimizing %d items is complete. Remaining items: %d'
+      % (self.server, numitems, len(self.items)))
+
+  def process(self, server):
+    if not len(self):
+      return
+    self.optimize()
+
+    logging.debug('%s - Processing %d items' % (self.server, len(self)))
+    self.items = filter(lambda x: not synchronize(x.path + '/',
+        server.path + x.path, recursive=x.recursive), self.items)
+
+    if len(self.items):
+      logging.error('%s - Error synchronizing %d items. Trying on next run...'
+          % (self.server, len(self.items)))
+
 # Simple timer implementation
 class Timer:
   def __init__(self):
@@ -130,62 +188,32 @@ class Timer:
 class PEvent(pyinotify.ProcessEvent):
 
   def process_IN_MOVED_TO(self, event):
-    # Recursively add watches to dirs moved in from a not watched source
-    if event.dir and not hasattr(event, 'src_pathname'):
-      wm.add_watch(event.path, MONITOR_EV, rec=True, auto_add=True)
-
-    # Always queue the whole subtree after a move/rename
-    self.process_default(event, rec=True)
-
-  def process_default(self, event, rec=False):
-    if rec:
-      if event.path == '.' and len(event.name):
-        path = event.name
-      else:
-        # We can't use event.pathname here because it breaks relative paths
-        path = os.path.join(event.path, event.name)
-      for subdir in GenerateRecursiveList(path):
-        for q in queues:
-          q.put(subdir)
-    else:
+    # Queue the renamed directory itself, recursively
+    if event.dir:
       for q in queues:
-        q.put(event.path)
+        q.put(Item(os.path.normpath(os.path.join(event.path, event.name)),
+          recursive=True))
+    else:
+      self.process_default(event)
+
+  def process_default(self, event):
+    for q in queues:
+      q.put(Item(event.path))
 
 ##### END:   Class definitions #####
 
 ##### BEGIN: Functions #####
 
 # Function that synchronizes non-recursively a directory and its contents
-def synchronize(src, dst, opts=None):
+def synchronize(src, dst, recursive=False):
   if src == None or dst == None:
     assert False, "Both src and dst must be provided"
   if os.access(RSYNC_PATH, os.X_OK):
+    opts = RSYNC_OPTIONS_RECURSIVE if recursive else RSYNC_OPTIONS
     cmd = ' '.join([RSYNC_PATH, opts, src, dst])
     logging.debug('Executing: %s' % cmd)
     return subprocess.call(cmd, shell=True) == 0
   return False
-
-def optimize(items, server):
-  numitems = len(items)
-  logging.debug('%s - Optimizing %d items' % (server, numitems))
-  items = sorted(items) # least specific path first
-  items = filter(lambda x: os.path.exists(x), items)
-  logging.debug('%s - Optimizing %d items is complete. Remaining items: %d'
-      % (server, numitems, len(items)))
-  return items
-
-def process(items, server):
-  items = optimize(items, server)
-
-  logging.info('%s - Processing %d items' % (server, len(items)))
-  items = filter(lambda x: not synchronize(x + '/', server.path + x,
-      opts=RSYNC_OPTIONS), items)
-
-  if len(items):
-    logging.error('%s - Error synchronizing %d items. Keeping for next run...'
-        % (server, len(items)))
-
-  return items
 
 # Function that generates a recursive list of subdirectories given the parent
 def GenerateRecursiveList(path):
@@ -194,6 +222,14 @@ def GenerateRecursiveList(path):
     return [subdir[0][2:] for subdir in os.walk(path)]
   else:
     return [subdir[0] for subdir in os.walk(path)]
+
+# Function that checks if a given dir is a subdir of given parent dir
+def is_subdir(parent, dir):
+  path_parent = os.path.abspath(parent)
+  path_dir = os.path.abspath(dir)
+  if path_dir != path_parent and path_dir.startswith(path_parent):
+    return False
+  return True
 
 ##### END:   Functions #####
 
@@ -204,28 +240,26 @@ def worker(monitor, q, path, server):
   monitor.wait()
 
   logging.info('%s - Starting initial sync' % server)
-  if not synchronize(path, server.path, opts=RSYNC_OPTIONS_INIT):
+  if not synchronize(path, server.path, recursive=True):
     logging.error('%s - Initial sync failed. Removing server!' % server)
     return
 
-  items, timer = [], Timer()
+  items, timer = ItemQueue(server), Timer()
   timer.start(TIMER_LIMIT)
   while True:
     try:
       logging.debug('%s - Remaining %f (%d items)' %
         (server, timer.remaining(), len(items)))
       item = q.get(block=True, timeout=timer.remaining())
-      if item not in items:
-        items.append(item)
+      items.add(item)
     except Queue.Empty:
-      if len(items):
-        items = process(items, server)
+      items.process(server)
       timer.reset()
       continue
     if len(items) >= MAX_CHANGES:
       logging.info('%s - MAX_CHANGES=%d reached, processing items now...'
           % (server, MAX_CHANGES))
-      items = process(items, server)
+      items.process(server)
       timer.reset()
 
 ##### END:   Worker Synchronization Threads #####
