@@ -31,7 +31,7 @@ pyinotify.log.setLevel(0)
 ##### BEGIN: Global constants #####
 
 # Threshold that triggers directory synchronization when surpassed
-MAX_CHANGES = 10
+MAX_CHANGES = 1000
 # Timer threshold (seconds) that triggers directory synchronization when the
 # countdown expires
 TIMER_LIMIT = 60
