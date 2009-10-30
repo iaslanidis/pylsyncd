@@ -187,6 +187,15 @@ class Timer:
 # methods
 class PEvent(pyinotify.ProcessEvent):
 
+  def process_IN_CREATE(self, event):
+    # Queue the new directory itself, recursively
+    if event.dir:
+      for q in queues:
+        q.put(Item(os.path.normpath(os.path.join(event.path, event.name)),
+          recursive=True))
+    else:
+      self.process_default(event)
+
   def process_IN_MOVED_TO(self, event):
     # Queue the renamed directory itself, recursively
     if event.dir:
