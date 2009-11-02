@@ -48,8 +48,9 @@ MONITOR_EV = pyinotify.EventsCodes.ALL_FLAGS['IN_CREATE']      | \
 
 # Rsync settings
 RSYNC_PATH = "/usr/bin/rsync"
-RSYNC_OPTIONS           = '-R -HpltogDd --delete'
-RSYNC_OPTIONS_RECURSIVE = '-R -HpltogDr --delete'
+RSYNC_OPTIONS           = '-Rd -HpltogD --delete'
+RSYNC_OPTIONS_RECURSIVE = '-Rr -HpltogD --delete'
+# Warning: The first two options are mandatory for correct behaviour!
 
 # Assemble remote paths relative to the local virtual root specified by
 # this marker within in the source path definition. Note that this marker
