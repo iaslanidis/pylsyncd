@@ -246,7 +246,7 @@ def rsync(src, dst, recursive=False):
 def is_subdir(parent, dir):
   path_parent = os.path.abspath(parent)
   path_dir = os.path.abspath(dir)
-  if path_dir != path_parent and path_dir.startswith(path_parent):
+  if len(path_dir) > len(path_parent) and path_dir.startswith(path_parent):
     return True
   return False
 
