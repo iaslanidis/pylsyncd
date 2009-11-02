@@ -76,7 +76,7 @@ class Source(object):
   def __init__(self, s):
     self.path = os.path.abspath(s)
 
-    if os.path.abspath(s) == os.path.curdir:
+    if os.path.normpath(s) == os.path.curdir:
       self.vroot = os.path.abspath(s)
     elif VIRTUAL_ROOT_MARKER in s:
       self.vroot = os.path.abspath(s.split(VIRTUAL_ROOT_MARKER, 1)[0])
