@@ -113,6 +113,9 @@ class Server(object):
   def path(self, s):
     self._path = self.__parse_server_path(s)
 
+  def synchronize(self, src, dst=None, recursive=False):
+    return rsync(src, self.path if dst is None else self.path + dst, recursive)
+
 class Item(object):
   def __init__(self, path, recursive=False):
     self.path = path
@@ -164,8 +167,8 @@ class ItemQueue(object):
     self.optimize()
 
     logging.debug('%s - Processing %d items' % (self.server, len(self)))
-    self.items = filter(lambda x: not synchronize(x.path + '/',
-        self.server.path + x.path, recursive=x.recursive), self.items)
+    self.items = filter(lambda x: not self.server.synchronize(x.path + '/',
+        x.path, recursive=x.recursive), self.items)
 
     if len(self.items):
       logging.error('%s - Error synchronizing %d items. Trying on next run...'
@@ -224,16 +227,20 @@ class PEvent(pyinotify.ProcessEvent):
 
 ##### BEGIN: Functions #####
 
-# Function that synchronizes non-recursively a directory and its contents
-def synchronize(src, dst, recursive=False):
+# Execution wrapper
+def execute(cmd, args):
+  if not os.access(cmd, os.X_OK):
+    logging.error('Unable to execute: %s' % cmd)
+    return False
+  logging.debug('Executing: %s %s' % (cmd, ' '.join(args)))
+  return subprocess.call([cmd] + args) == 0
+
+# Rsync wrapper
+def rsync(src, dst, recursive=False):
   if src == None or dst == None:
     assert False, "Both src and dst must be provided"
-  if os.access(RSYNC_PATH, os.X_OK):
-    opts = RSYNC_OPTIONS_RECURSIVE if recursive else RSYNC_OPTIONS
-    cmd = ' '.join([RSYNC_PATH, opts, src, dst])
-    logging.debug('Executing: %s' % cmd)
-    return subprocess.call(cmd, shell=True) == 0
-  return False
+  opts = RSYNC_OPTIONS_RECURSIVE if recursive else RSYNC_OPTIONS
+  return execute(RSYNC_PATH, opts.split() + [src, dst])
 
 # Function that checks if a given dir is a subdir of given parent dir
 def is_subdir(parent, dir):
@@ -252,7 +259,7 @@ def worker(monitor, q, path, server):
   monitor.wait()
 
   logging.info('%s - Starting initial sync' % server)
-  if not synchronize(path, server.path, recursive=True):
+  if not server.synchronize(path, recursive=True):
     logging.error('%s - Initial sync failed. Removing server!' % server)
     return
 
