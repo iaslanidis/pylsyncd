@@ -224,14 +224,6 @@ def synchronize(src, dst, recursive=False):
     return subprocess.call(cmd, shell=True) == 0
   return False
 
-# Function that generates a recursive list of subdirectories given the parent
-def GenerateRecursiveList(path):
-  path = os.path.normpath(path)
-  if path == '.':
-    return [subdir[0][2:] for subdir in os.walk(path)]
-  else:
-    return [subdir[0] for subdir in os.walk(path)]
-
 # Function that checks if a given dir is a subdir of given parent dir
 def is_subdir(parent, dir):
   path_parent = os.path.abspath(parent)
