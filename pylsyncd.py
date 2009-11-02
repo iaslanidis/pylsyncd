@@ -48,12 +48,13 @@ MONITOR_EV = pyinotify.EventsCodes.ALL_FLAGS['IN_CREATE']      | \
 
 # Rsync settings
 RSYNC_PATH = "/usr/bin/rsync"
-RSYNC_OPTIONS           = '-HpltogDd --delete'
-RSYNC_OPTIONS_RECURSIVE = '-HpltogDr --delete'
+RSYNC_OPTIONS           = '-R -HpltogDd --delete'
+RSYNC_OPTIONS_RECURSIVE = '-R -HpltogDr --delete'
 
 # Assemble remote paths relative to the local virtual root specified by
-# this marker within in the source path definition
-VIRTUAL_ROOT_MARKER     = '/./'
+# this marker within in the source path definition. Note that this marker
+# should always start and end with a path separator!
+VIRTUAL_ROOT_MARKER     = '%s.%s' % (os.path.sep, os.path.sep)
 
 ##### END:   Global constants #####
 
@@ -157,14 +158,13 @@ class Destination(object):
     logging.debug('%s - Processing %d items' % (self.name, len(self.queue)))
     self.queue.optimize()
 
-    # Rewrite remote paths on the fly
     if self.source.vroot is None:
       self.queue.filter(lambda x: not rsync(x.path + os.path.sep,
-        self.path + x.path, recursive=x.recursive))
+        self.path, recursive=x.recursive))
     else:
-      self.queue.filter(lambda x: not rsync(x.path + os.path.sep,
-        self.path + os.path.relpath(x.path, self.source.vroot),
-        recursive=x.recursive))
+      # Rewrite source paths on the fly to include the virtual root marker
+      self.queue.filter(lambda x: not rsync(x.vpath(self.source.vroot)
+        + os.path.sep, self.path, recursive=x.recursive))
 
     if len(self.queue):
       logging.error('%s - Error synchronizing %d items.'
@@ -179,6 +179,10 @@ class Item(object):
 
   def __repr__(self):
     return '<Item path=%s recursive=%s>' % (self.path, self.recursive)
+
+  def vpath(self, vroot):
+    # Return our path including the virtual root marker
+    return self.path.replace(vroot, vroot + VIRTUAL_ROOT_MARKER[:-1], 1)
 
 class ItemQueue(object):
   def __init__(self):
