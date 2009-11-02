@@ -66,15 +66,16 @@ queues = []
 # Server definition
 class Server(object):
   def __init__(self, s):
-    self._target = s
+    assert len(s)
+    self.name = self.path = s
+
+  def __repr__(self):
+    return '<Server name=%s path=%s>' % (self.name, self.path)
 
   def __str__(self):
     return self.name
 
-  @property
-  def name(self):
-    s = self._target
-
+  def __parse_server_name(self, s):
     # [USER@]HOST::DEST --> HOST
     if '::' in s.split('/', 1)[0]:
       return s.split('@', 1)[-1].split('::', 1)[0]
@@ -86,21 +87,31 @@ class Server(object):
     # [USER@]HOST:DEST --> HOST
     return s.split('@', 1)[-1].split(':', 1)[0]
 
-  @property
-  def path(self):
-    s = self._target
-
+  def __parse_server_path(self, s):
     # rsync://[USER@]HOST[:PORT]/DEST
     # [USER@]HOST::DEST
     hostpart = s.split('/', 1)[0]
     if s.startswith('rsync://') or '::' in hostpart or ':' in hostpart:
-      if s.endswith('/'):
-        return s
-      else:
-        return s + '/'
+      return s if s.endswith('/') else s + '/'
 
     # Assume [USER@]HOST without :DEST
     return s + ':'
+
+  @property
+  def name(self):
+    return self._name
+
+  @name.setter
+  def name(self, s):
+    self._name = self.__parse_server_name(s)
+
+  @property
+  def path(self):
+    return self._path
+
+  @path.setter
+  def path(self, s):
+    self._path = self.__parse_server_path(s)
 
 class Item(object):
   def __init__(self, path, recursive=False):
