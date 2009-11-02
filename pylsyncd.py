@@ -147,14 +147,14 @@ class ItemQueue(object):
     logging.debug('%s - Optimizing %d items is complete. Remaining items: %d'
       % (self.server, numitems, len(self.items)))
 
-  def process(self, server):
+  def process(self):
     if not len(self):
       return
     self.optimize()
 
     logging.debug('%s - Processing %d items' % (self.server, len(self)))
     self.items = filter(lambda x: not synchronize(x.path + '/',
-        server.path + x.path, recursive=x.recursive), self.items)
+        self.server.path + x.path, recursive=x.recursive), self.items)
 
     if len(self.items):
       logging.error('%s - Error synchronizing %d items. Trying on next run...'
@@ -254,13 +254,13 @@ def worker(monitor, q, path, server):
       item = q.get(block=True, timeout=timer.remaining())
       items.add(item)
     except Queue.Empty:
-      items.process(server)
+      items.process()
       timer.reset()
       continue
     if len(items) >= MAX_CHANGES:
       logging.info('%s - MAX_CHANGES=%d reached, processing items now...'
           % (server, MAX_CHANGES))
-      items.process(server)
+      items.process()
       timer.reset()
 
 ##### END:   Worker Synchronization Threads #####
