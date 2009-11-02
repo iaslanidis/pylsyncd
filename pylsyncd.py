@@ -139,7 +139,7 @@ class ItemQueue(object):
 
     # Find items with the recursive flag and get rid of all queued subtrees
     for parent in filter(lambda x: x.recursive, self.items):
-      self.items = filter(lambda x: is_subdir(parent.path, x.path), self.items)
+      self.items = filter(lambda x: not is_subdir(parent.path, x.path), self.items)
 
     # Get rid of deleted items
     self.items = filter(lambda x: os.path.exists(x.path), self.items)
@@ -229,8 +229,8 @@ def is_subdir(parent, dir):
   path_parent = os.path.abspath(parent)
   path_dir = os.path.abspath(dir)
   if path_dir != path_parent and path_dir.startswith(path_parent):
-    return False
-  return True
+    return True
+  return False
 
 ##### END:   Functions #####
 
