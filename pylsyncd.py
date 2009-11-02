@@ -32,9 +32,11 @@ pyinotify.log.setLevel(0)
 
 # Threshold that triggers directory synchronization when surpassed
 MAX_CHANGES = 1000
+
 # Timer threshold (seconds) that triggers directory synchronization when the
 # countdown expires
 TIMER_LIMIT = 60
+
 # Events to monitor
 MONITOR_EV = pyinotify.EventsCodes.ALL_FLAGS['IN_CREATE']      | \
              pyinotify.EventsCodes.ALL_FLAGS['IN_DELETE']      | \
@@ -43,10 +45,15 @@ MONITOR_EV = pyinotify.EventsCodes.ALL_FLAGS['IN_CREATE']      | \
              pyinotify.EventsCodes.ALL_FLAGS['IN_MOVED_FROM']  | \
              pyinotify.EventsCodes.ALL_FLAGS['IN_MOVED_TO']    | \
              pyinotify.EventsCodes.ALL_FLAGS['IN_CLOSE_WRITE']
-# rsync for directory content
+
+# Rsync settings
 RSYNC_PATH = "/usr/bin/rsync"
 RSYNC_OPTIONS           = '-HpltogDd --delete'
 RSYNC_OPTIONS_RECURSIVE = '-HpltogDr --delete'
+
+# Assemble remote paths relative to the local virtual root specified by
+# this marker within in the source path definition
+VIRTUAL_ROOT_MARKER     = '/./'
 
 ##### END:   Global constants #####
 
@@ -54,7 +61,7 @@ RSYNC_OPTIONS_RECURSIVE = '-HpltogDr --delete'
 
 # Watch Monitor
 wm = pyinotify.WatchManager()
-# Number of workers (destination file servers)
+# Number of workers (one thread per destination)
 num_worker_threads = 0
 # Queues of the worker threads where the modified directories go
 queues = []
@@ -63,47 +70,34 @@ queues = []
 
 ##### BEGIN: Class definitions #####
 
-# Server definition
-class Server(object):
+class Source(object):
   def __init__(self, s):
-    assert len(s)
-    self.name = self.path = s
+    self.path = os.path.abspath(s)
+
+    if os.path.abspath(s) == os.path.curdir:
+      self.vroot = os.path.abspath(s)
+    elif VIRTUAL_ROOT_MARKER in s:
+      self.vroot = os.path.abspath(s.split(VIRTUAL_ROOT_MARKER, 1)[0])
+    else:
+      self.vroot = None
+
+    logging.debug('Registered source: %s' % self)
 
   def __repr__(self):
-    return '<Server name=%s path=%s>' % (self.name, self.path)
+    return '<Source path=%s vroot=%s>' % (self.path, self.vroot)
 
-  def __str__(self):
-    return self.name
+class Destination(object):
+  def __init__(self, source, s):
+    self.source = source
+    self.queue = ItemQueue()
+    self.remote = False
+    self.name = None
+    self.path = s
+    logging.debug('Registered destination: %s' % self)
 
-  def __parse_server_name(self, s):
-    # [USER@]HOST::DEST --> HOST
-    if '::' in s.split('/', 1)[0]:
-      return s.split('@', 1)[-1].split('::', 1)[0]
-
-    # rsync://[USER@]HOST[:PORT]/DEST --> HOST
-    if s.startswith('rsync://'):
-      return s.split('rsync://', 1)[1].split('@', 1)[-1].split(':', 1)[0].split('/', 1)[0]
-
-    # [USER@]HOST:DEST --> HOST
-    return s.split('@', 1)[-1].split(':', 1)[0]
-
-  def __parse_server_path(self, s):
-    # rsync://[USER@]HOST[:PORT]/DEST
-    # [USER@]HOST::DEST
-    hostpart = s.split('/', 1)[0]
-    if s.startswith('rsync://') or '::' in hostpart or ':' in hostpart:
-      return s if s.endswith('/') else s + '/'
-
-    # Assume [USER@]HOST without :DEST
-    return s + ':'
-
-  @property
-  def name(self):
-    return self._name
-
-  @name.setter
-  def name(self, s):
-    self._name = self.__parse_server_name(s)
+  def __repr__(self):
+    return '<Destination path=%s remote=%s name=%s source=%s queue=%s>' \
+      % (self.path, self.remote, self.name, self.source, self.queue)
 
   @property
   def path(self):
@@ -111,10 +105,72 @@ class Server(object):
 
   @path.setter
   def path(self, s):
-    self._path = self.__parse_server_path(s)
+    # Prepare path specification, set the remote flag and
+    # the destination shortname
 
-  def synchronize(self, src, dst=None, recursive=False):
-    return rsync(src, self.path if dst is None else self.path + dst, recursive)
+    # Rsync destination path modifications:
+    #                DEST              ->   DEST/
+    # rsync://[USER@]HOST[:PORT]/DEST  ->   rsync://[USER@]HOST[:PORT]/DEST/
+    #         [USER@]HOST::DEST        ->   [USER@]HOST::DEST/
+    #         [USER@]HOST:             ->   [USER@]HOST:
+    #         [USER@]HOST:DEST         ->   [USER@]HOST:DEST/
+    suffix = None
+    if s.startswith('rsync://'):
+      self.remote = True
+      server = s.split('rsync://', 1)[-1]   # strip protocol
+      server = server.split('/', 1)[0]      # strip path
+      server = server.split('@', 1)[-1]     # strip username
+      server = server.split(':', 1)[0]      # strip port/module
+      self.name = server
+      if not s.endswith('/'):
+        suffix = '/'
+    elif '::' in s:
+      self.remote = True
+      server = s.split('::', 1)[0]          # strip path
+      server = server.split('@', 1)[-1]     # strip username
+      server = server.split(':', 1)[0]      # strip port
+      self.name = server
+      if not s.endswith('/'):
+        suffix = '/'
+    elif ':' in s:
+      self.remote = True
+      server = s.split(':', 1)[0]           # strip path
+      server = server.split('@', 1)[-1]     # strip username
+      server = server.split(':', 1)[0]      # strip port
+      self.name = server
+      if not s.endswith(':') and not s.endswith('/'):
+        suffix = '/'
+    else:
+      self.remote = False
+      # The local shortname in the logs is the last dirname:
+      #     /foo/bar/baz/ --> baz
+      self.name = os.path.normpath(s).rsplit('/', 1)[-1]
+      if not s.endswith('/'):
+        suffix = '/'
+
+    self._path = s if suffix is None else s + suffix
+
+  def synchronize(self):
+    if not len(self.queue):
+      return True
+
+    logging.debug('%s - Processing %d items' % (self.name, len(self.queue)))
+    self.queue.optimize()
+
+    # Rewrite remote paths on the fly
+    if self.source.vroot is None:
+      self.queue.filter(lambda x: not rsync(x.path + os.path.sep,
+        self.path + x.path, recursive=x.recursive))
+    else:
+      self.queue.filter(lambda x: not rsync(x.path + os.path.sep,
+        self.path + os.path.relpath(x.path, self.source.vroot),
+        recursive=x.recursive))
+
+    if len(self.queue):
+      logging.error('%s - Error synchronizing %d items.'
+          % (self.name, len(self.queue)))
+      return False
+    return True
 
 class Item(object):
   def __init__(self, path, recursive=False):
@@ -125,12 +181,11 @@ class Item(object):
     return '<Item path=%s recursive=%s>' % (self.path, self.recursive)
 
 class ItemQueue(object):
-  def __init__(self, server):
+  def __init__(self):
     self.items = []
-    self.server = server
 
   def __repr__(self):
-    return '<ItemQueue server=%s numitems=%d>' % (self.server, len(self.items))
+    return '<ItemQueue numitems=%d>' % len(self.items)
 
   def __len__(self):
     return len(self.items)
@@ -146,33 +201,26 @@ class ItemQueue(object):
 
   def optimize(self):
     numitems = len(self.items)
-    logging.debug('%s - Optimizing %d items' % (self.server, numitems))
+    if numitems < 2:
+      return
+    logging.debug('Optimizing %d items' % numitems)
 
     # Least specific path first
     self.items.sort(lambda x,y: len(x.path) - len(y.path))
 
-    # Find items with the recursive flag and get rid of all queued subtrees
+    # Find items with the recursive flag and get rid of all queued subdirs
     for parent in filter(lambda x: x.recursive, self.items):
-      self.items = filter(lambda x: not is_subdir(parent.path, x.path), self.items)
+      self.items = filter(lambda x: not is_subdir(parent.path, x.path),
+          self.items)
 
     # Get rid of deleted items
     self.items = filter(lambda x: os.path.exists(x.path), self.items)
 
-    logging.debug('%s - Optimizing %d items is complete. Remaining items: %d'
-      % (self.server, numitems, len(self.items)))
+    logging.debug('Optimizing %d items is complete. Remaining items: %d'
+      % (numitems, len(self.items)))
 
-  def process(self):
-    if not len(self):
-      return
-    self.optimize()
-
-    logging.debug('%s - Processing %d items' % (self.server, len(self)))
-    self.items = filter(lambda x: not self.server.synchronize(x.path + '/',
-        x.path, recursive=x.recursive), self.items)
-
-    if len(self.items):
-      logging.error('%s - Error synchronizing %d items. Trying on next run...'
-          % (self.server, len(self.items)))
+  def filter(self, function):
+    self.items = filter(function, self.items)
 
 # Simple timer implementation
 class Timer:
@@ -228,19 +276,19 @@ class PEvent(pyinotify.ProcessEvent):
 ##### BEGIN: Functions #####
 
 # Execution wrapper
-def execute(cmd, args):
-  if not os.access(cmd, os.X_OK):
-    logging.error('Unable to execute: %s' % cmd)
+def execute(command, args):
+  if not os.access(command, os.X_OK):
+    logging.error('Unable to execute: %s' % command)
     return False
-  logging.debug('Executing: %s %s' % (cmd, ' '.join(args)))
-  return subprocess.call([cmd] + args) == 0
+  logging.debug('Executing: %s %s' % (command, ' '.join(args)))
+  return subprocess.call([command] + args) == 0
 
 # Rsync wrapper
-def rsync(src, dst, recursive=False):
-  if src == None or dst == None:
-    assert False, "Both src and dst must be provided"
+def rsync(source, destination, recursive=False):
+  if source == None or destination == None:
+    assert False, "Both source and destination must be provided"
   opts = RSYNC_OPTIONS_RECURSIVE if recursive else RSYNC_OPTIONS
-  return execute(RSYNC_PATH, opts.split() + [src, dst])
+  return execute(RSYNC_PATH, opts.split() + [source, destination])
 
 # Function that checks if a given dir is a subdir of given parent dir
 def is_subdir(parent, dir):
@@ -254,31 +302,33 @@ def is_subdir(parent, dir):
 
 ##### BEGIN: Worker Synchronization Threads #####
 
-def worker(monitor, q, path, server):
+def worker(monitor, q, source, destination):
   # Wait until all paths are watched by inotify
   monitor.wait()
 
-  logging.info('%s - Starting initial sync' % server)
-  if not server.synchronize(path, recursive=True):
-    logging.error('%s - Initial sync failed. Removing server!' % server)
+  logging.info('%s - Starting initial sync' % destination.name)
+  destination.queue.add(Item(source.path, recursive=True))
+  if not destination.synchronize():
+    logging.error('%s - Initial sync failed. Removing destination!'
+        % destination.name)
     return
 
-  items, timer = ItemQueue(server), Timer()
+  timer = Timer()
   timer.start(TIMER_LIMIT)
   while True:
     try:
       logging.debug('%s - Remaining %f (%d items)' %
-        (server, timer.remaining(), len(items)))
+        (destination.name, timer.remaining(), len(destination.queue)))
       item = q.get(block=True, timeout=timer.remaining())
-      items.add(item)
+      destination.queue.add(item)
     except Queue.Empty:
-      items.process()
+      destination.synchronize()
       timer.reset()
       continue
-    if len(items) >= MAX_CHANGES:
+    if len(destination.queue) >= MAX_CHANGES:
       logging.info('%s - MAX_CHANGES=%d reached, processing items now...'
-          % (server, MAX_CHANGES))
-      items.process()
+          % (destination.name, MAX_CHANGES))
+      destination.synchronize()
       timer.reset()
 
 ##### END:   Worker Synchronization Threads #####
@@ -287,10 +337,10 @@ def worker(monitor, q, path, server):
 
 # Function that adds the inotify event handlers to the directories and defines
 # the event processor
-def Monitor(monitor, path):
+def Monitor(monitor, source):
   # Set up the inotify handler watcher
   notifier = pyinotify.Notifier(wm, PEvent())
-  wm.add_watch(path, MONITOR_EV, rec=True, auto_add=True)
+  wm.add_watch(source.path, MONITOR_EV, rec=True, auto_add=True)
   logging.info('Monitor initialized!')
   monitor.set()
   notifier.loop()

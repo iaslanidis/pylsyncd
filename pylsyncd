@@ -29,50 +29,69 @@ def usage():
   print 'Use: %s <directory to watch> <rsync synchronization destinations>' \
       % (sys.argv[0],)
   print '''
+  Note: If the source path is "." or contains the virtual root marker "%s",
+        then all remote target paths are rewritten to be relative to the
+        specified virtual root.
+
   Examples:
 
-      %s . srv2.example.com srv3.example.net srv4.example.org
+      pylsyncd /tmp/source/./ /tmp/destination
+
+        source = /tmp/source
+        target = /tmp/destination (local machine), destination paths
+                 are rewritten to be relative to the virtual root at
+                 /tmp/source
+
+      pylsyncd . srv2.example.com srv3.example.net srv4.example.org
 
         source = "." (current working directory)
         target = homedir of current user at remote servers
-                 srv2.example.com, srv3.example.net and srv4.example.org
+                 srv2.example.com, srv3.example.net and srv4.example.org,
+                 remote paths are relative to the current dir
         method = rsync on top of remote shell protocoll, eg. rsh/ssh.
 
-
-      %s /var/www www-data@srv2.example.com:/var/www
+      pylsyncd /var/www www-data@srv2.example.com
 
         source = /var/www
         target = /var/www at remote server srv2.example.com, user www-data
         method = rsync on top of remote shell protocoll, eg. rsh/ssh.
 
-
-      %s /var/www srv2.example.com::webdata
+      pylsyncd /var/www/./ www-data@srv2.example.com:/var/cluster/www
 
         source = /var/www
-        target = module webdata at remote server srv2.example.com
+        target = /var/cluster/www at remote server srv2.example.com,
+                 user www-data, remote paths start at /var/cluster/www
+                 and are relative to local /var/www
+        method = rsync on top of remote shell protocoll, eg. rsh/ssh.
+
+      pylsyncd /var/www/./ srv2.example.com::webdata
+
+        source = /var/www
+        target = module webdata at remote server srv2.example.com,
+                 remote paths are relative to local /var/www
         method = rsync protocoll
 
   For more information on destination notation see man rsync(1).
-  ''' % (sys.argv[0], sys.argv[0], sys.argv[0])
+  ''' % VIRTUAL_ROOT_MARKER
 
 
 if len(sys.argv) < 3:
   usage()
   sys.exit()
 logging.basicConfig(level=logging.DEBUG)
-path = sys.argv[1]
-servers = [Server(i) for i in sys.argv[2:]]
+source = Source(sys.argv[1])
+destinations = [Destination(source, i) for i in sys.argv[2:]]
 num_worker_threads = len(sys.argv) - 2
 logging.debug('Total additional threads: %s' % num_worker_threads)
 
 monitor = threading.Event() # Synchronize worker threads with Monitor
 
-for server in servers:
+for destination in destinations:
   q = Queue.Queue(0) # infinite size
   queues.append(q)
-  t = threading.Thread(target=worker, args=(monitor, q, path, server))
+  t = threading.Thread(target=worker, args=(monitor, q, source, destination))
   t.setDaemon(True)
   t.start()
 
-Monitor(monitor, path)
+Monitor(monitor, source)
 
