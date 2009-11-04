@@ -170,7 +170,6 @@ class Destination(object):
       return True
 
     log.debug('%s - Processing %d items' % (self.name, len(self.queue)))
-    self.queue.optimize()
 
     if self.source.vroot is None:
       self.queue.filter(lambda x: not _rsync(x.path + os.path.sep,
@@ -385,14 +384,19 @@ def worker(q, source, destination):
       item = q.get(block=True, timeout=timer.remaining())
       destination.queue.add(item)
     except Queue.Empty:
+      destination.queue.optimize()
       destination.synchronize()
       timer.reset()
       continue
     if len(destination.queue) >= MAX_CHANGES:
-      log.info('%s - MAX_CHANGES=%d reached, processing items now...'
+      log.debug('%s - MAX_CHANGES=%d reached, optimizing queue...'
           % (destination.name, MAX_CHANGES))
-      destination.synchronize()
-      timer.reset()
+      destination.queue.optimize()
+      if len(destination.queue) >= MAX_CHANGES:
+        log.warning('%s - MAX_CHANGES=%d reached, processing items now...'
+            % (destination.name, MAX_CHANGES))
+        destination.synchronize()
+        timer.reset()
 
 ##### END:   Functions #####
 
