@@ -1,12 +1,82 @@
+PYLSYNCD -- Python daemon for asynchronous data replication using rsync
+=======================================================================
+
+    Project URL: http://code.google.com/p/pylsyncd/
+    Development: http://labs.feurix.org/admin/pylsyncd/
+
 Pylsyncd is a python implementation similar to lsyncd that uses rsync to
-synchronize local directories with several remote machines running rsyncd.
-Pylsyncd monitors recursively a set of directories using pyinotify, a pure
+synchronize local directories with several remote machines.
+
+Pylsyncd recursively monitors a set of directories using pyinotify, a pure
 Python module used for monitoring filesystems changes that relies on inotify.
 
-The main advantage of pylsyncd against lsyncd is that it uses message queues in
-order to synchronize in a parallel way several destination servers, saving up
-time when it is required to have more than one destination. It has been tested
-in heavy loaded environments.
+The main advantage of pylsyncd against lsyncd is that it aggregates changes
+within a configurable timeframe and is then able to optimize the remaining
+changeset, often resulting in a lot less rsync invocations. It uses message
+queues in order to synchronize several destination servers in parallel,
+saving up time when it is required to have more than one destination.
+It has been tested in heavy loaded environments.
 
-If you are interested in contributing or improving pylsyncd, do not hesitate
-to contact the administrator.
+If you are interested in contributing or improving pylsyncd, do not
+hesitate to contact us.
+
+
+Some notes on paths
+-------------------
+The pylsyncd source path must be local (we need to watch it with pyinotify)
+while the destination path may be any valid rsync(1) destination.
+
+If the source path is "." or contains the virtual root marker "/./" then
+all destination paths are rewritten to be relative to the specified local
+virtual root.
+
+For example:
+
+    pylsyncd /tmp/foo/./bar/baz /tmp/destination
+
+will result in:
+
+    /tmp/destination/bar
+    /tmp/destination/bar/baz
+
+
+More examples:
+
+    pylsyncd /tmp/source/./ /tmp/destination
+
+      source = /tmp/source
+      target = /tmp/destination (local machine), destination paths
+               are rewritten to be relative to the virtual root at
+               /tmp/source
+
+    pylsyncd . srv2.example.com srv3.example.net srv4.example.org
+
+      source = "." (current working directory)
+      target = homedir of current user at remote servers
+               srv2.example.com, srv3.example.net and srv4.example.org,
+               remote paths are relative to the current dir
+      method = rsync on top of remote shell protocoll, eg. rsh/ssh.
+
+    pylsyncd /var/www www-data@srv2.example.com
+
+      source = /var/www
+      target = /var/www at remote server srv2.example.com, user www-data
+      method = rsync on top of remote shell protocoll, eg. rsh/ssh.
+
+    pylsyncd /var/www/./ www-data@srv2.example.com:/var/cluster/www
+
+      source = /var/www
+      target = /var/cluster/www at remote server srv2.example.com,
+               user www-data, remote paths start at /var/cluster/www
+               and are relative to local /var/www
+      method = rsync on top of remote shell protocoll, eg. rsh/ssh.
+
+    pylsyncd /var/www/./ srv2.example.com::webdata
+
+      source = /var/www
+      target = module webdata at remote server srv2.example.com,
+               remote paths are relative to local /var/www
+      method = rsync protocoll
+
+For more information on destination notation see man rsync(1).
+
