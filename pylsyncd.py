@@ -162,7 +162,7 @@ class Destination(object):
     if not len(self.queue):
       return True
 
-    log.debug('%s - Processing %d items' % (self.name, len(self.queue)))
+    log.debug('[%s] Processing %d items' % (self.name, len(self.queue)))
 
     if self.source.vroot is None:
       self.queue.filter(lambda x: not _rsync(x.path + os.path.sep,
@@ -173,7 +173,7 @@ class Destination(object):
         + os.path.sep, self.path, recursive=x.recursive))
 
     if len(self.queue):
-      log.error('%s - Error synchronizing %d items.'
+      log.error('[%s] Error synchronizing %d items.'
           % (self.name, len(self.queue)))
       return False
     return True
@@ -369,12 +369,12 @@ def worker(q, source, destination):
   # Wait until all paths are watched by inotify
   _monitoring.wait()
 
-  log.info('%s - Starting initial sync...' % destination.name)
+  log.info('[%s] Starting initial sync...' % destination.name)
   destination.queue.add(Item(source.path, recursive=True))
   if destination.synchronize():
-    log.info('%s - Initial sync complete.' % destination.name)
+    log.info('[%s] Initial sync complete.' % destination.name)
   else:
-    log.error('%s - Initial sync failed. Removing destination!'
+    log.error('[%s] Initial sync failed. Removing destination!'
         % destination.name)
     return
 
@@ -382,7 +382,7 @@ def worker(q, source, destination):
   timer.start(TIMER_LIMIT)
   while True:
     try:
-      log.debug('%s - Remaining %f (%d items)' %
+      log.debug('[%s] Remaining %f (%d items)' %
         (destination.name, timer.remaining(), len(destination.queue)))
       item = q.get(block=True, timeout=timer.remaining())
       destination.queue.add(item)
@@ -392,11 +392,11 @@ def worker(q, source, destination):
       timer.reset()
       continue
     if len(destination.queue) >= MAX_CHANGES:
-      log.debug('%s - MAX_CHANGES=%d reached, optimizing queue...'
+      log.debug('[%s] MAX_CHANGES=%d reached, optimizing queue...'
           % (destination.name, MAX_CHANGES))
       destination.queue.optimize()
       if len(destination.queue) >= MAX_CHANGES:
-        log.warning('%s - MAX_CHANGES=%d reached, processing items now...'
+        log.warning('[%s] MAX_CHANGES=%d reached, processing items now...'
             % (destination.name, MAX_CHANGES))
         destination.synchronize()
         timer.reset()
