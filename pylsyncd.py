@@ -70,16 +70,7 @@ _monitoring = None
 
 ##### BEGIN: Logging #####
 
-def logger_init():
-  log = logging.getLogger("pylsyncd")
-  log_handler = logging.StreamHandler()
-  log_handler.setFormatter(
-    logging.Formatter("[pylsyncd %(levelname)s] %(message)s"))
-  log.addHandler(log_handler)
-  log.setLevel(logging.DEBUG)
-  return log
-
-log = logger_init()
+log = logging.getLogger('pylsyncd')
 
 ##### END:   Logging #####
 

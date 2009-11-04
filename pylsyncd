@@ -25,9 +25,22 @@ import pylsyncd
 
 from optparse import OptionParser
 
+# Defaults
+LOG_FORMAT_MSG = '%(asctime)s %(name)s[%(process)s]: %(message)s'
+LOG_FORMAT_TIME = '%b %d %T'
+LOG_FORMAT_MSG_DEBUG = '%(asctime)s %(name)s[%(process)s]' \
+    + ' (%(filename)12s:%(lineno).3d) [%(levelname)8s]: %(message)s'
+LOG_FORMAT_TIME_DEBUG = '%T'
+
+# Logging
 log = logging.getLogger("pylsyncd")
 log.setLevel(logging.WARNING)
+log_format = logging.Formatter(LOG_FORMAT_MSG, LOG_FORMAT_TIME)
+log_handler = logging.StreamHandler()
+log_handler.setFormatter(log_format)
+log.addHandler(log_handler)
 
+# Option parsing
 version = '%prog version 0.1'
 usage = 'Usage: %prog [options] <directory to watch> <rsync destinations...>'
 
@@ -45,15 +58,17 @@ parser.add_option("-q", "--quiet", action="store_true",
 if len(args) < 2:
   parser.print_help()
   sys.exit(1)
-
 if options.verbose:
   log.setLevel(logging.INFO)
 if options.quiet:
   log.setLevel(logging.ERROR)
 if options.debug:
+  log_format = logging.Formatter(LOG_FORMAT_MSG_DEBUG, LOG_FORMAT_TIME_DEBUG)
+  log_handler.setFormatter(log_format)
   log.setLevel(logging.DEBUG)
   pylsyncd.pyinotify.log.setLevel(logging.DEBUG)
 
+# Main script
 log.info('Starting up... (%s)' % parser.get_version())
 pylsyncd.init(args[0], args[1:])
 pylsyncd.loop()
