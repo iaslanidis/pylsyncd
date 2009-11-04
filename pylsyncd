@@ -54,6 +54,8 @@ parser.add_option("-v", "--verbose", action="store_true",
                   dest="verbose", help="Verbose mode")
 parser.add_option("-q", "--quiet", action="store_true",
                   dest="quiet", help="Only print errors")
+parser.add_option("-n", "--dry-run", action="store_true",
+                  dest="dryrun", help="Simulate external command execution")
 
 (options, args) = parser.parse_args()
 
@@ -72,6 +74,6 @@ if options.debug:
 
 # Main script
 log.info('Starting up... (%s)' % parser.get_version())
-pylsyncd.init(args[0], args[1:])
+pylsyncd.init(args[0], args[1:], dryrun=options.dryrun)
 pylsyncd.loop()
 

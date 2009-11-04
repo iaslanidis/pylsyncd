@@ -66,6 +66,7 @@ _notifier = None
 _nworkers = 0
 _queues = []
 _monitoring = None
+_dryrun = False
 
 ##### END:   Global variables #####
 
@@ -286,11 +287,9 @@ class ProcessEvent(pyinotify.ProcessEvent):
 ##### BEGIN: Helper Functions #####
 
 def _execute(command, args):
-  if not os.access(command, os.X_OK):
-    log.error('Unable to execute: %s' % command)
-    return False
+  global _dryrun
   log.info('Executing: %s %s' % (command, ' '.join(args)))
-  return subprocess.call([command] + args) == 0
+  return True if _dryrun else subprocess.call([command] + args) == 0
 
 def _rsync(source, destination, recursive=False):
   if source == None or destination == None:
@@ -309,12 +308,19 @@ def _is_subdir(parent, dir):
 
 ##### BEGIN: Functions #####
 
-def init(source, destinations):
+def init(source, destinations, dryrun=False):
+  global _dryrun
   global _monitoring
   global _notifier
   global _nworkers
   global _queues
   global _watchmanager
+
+  if dryrun:
+    _dryrun = True
+    log.warning('DRY-RUN requested, not executing any external commands!')
+  else:
+    check_dependencies()
 
   source = Source(source)
   destinations = [Destination(source, i) for i in destinations]
@@ -337,6 +343,11 @@ def init(source, destinations):
     t.start()
 
   monitor(source)
+
+def check_dependencies():
+  if not os.access(RSYNC_PATH, os.X_OK):
+    log.fatal('Rsync not found or not executable: %s' % RSYNC_PATH)
+    raise Exception
 
 def monitor(source):
   global _watchmanager
