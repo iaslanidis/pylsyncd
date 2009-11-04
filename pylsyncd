@@ -23,63 +23,37 @@ import threading
 
 import pylsyncd
 
+from optparse import OptionParser
+
 log = logging.getLogger("pylsyncd")
+log.setLevel(logging.WARNING)
 
-# Function that explains how to use the script
-def usage():
-  print 'Use: %s <directory to watch> <rsync synchronization destinations>' \
-      % (sys.argv[0],)
-  print '''
-  Note: If the source path is "." or contains the virtual root marker "%s",
-        then all remote target paths are rewritten to be relative to the
-        specified virtual root.
+version = '%prog version 0.1'
+usage = 'Usage: %prog [options] <directory to watch> <rsync destinations...>'
 
-  Examples:
+parser = OptionParser(usage=usage, version=version)
 
-      pylsyncd /tmp/source/./ /tmp/destination
+parser.add_option("-d", "--debug", action="store_true",
+                  dest="debug", help="Debug mode")
+parser.add_option("-v", "--verbose", action="store_true",
+                  dest="verbose", help="Verbose mode")
+parser.add_option("-q", "--quiet", action="store_true",
+                  dest="quiet", help="Only print errors")
 
-        source = /tmp/source
-        target = /tmp/destination (local machine), destination paths
-                 are rewritten to be relative to the virtual root at
-                 /tmp/source
+(options, args) = parser.parse_args()
 
-      pylsyncd . srv2.example.com srv3.example.net srv4.example.org
+if len(args) < 2:
+  parser.print_help()
+  sys.exit(1)
 
-        source = "." (current working directory)
-        target = homedir of current user at remote servers
-                 srv2.example.com, srv3.example.net and srv4.example.org,
-                 remote paths are relative to the current dir
-        method = rsync on top of remote shell protocoll, eg. rsh/ssh.
+if options.verbose:
+  log.setLevel(logging.INFO)
+if options.quiet:
+  log.setLevel(logging.ERROR)
+if options.debug:
+  log.setLevel(logging.DEBUG)
+  pylsyncd.pyinotify.log.setLevel(logging.DEBUG)
 
-      pylsyncd /var/www www-data@srv2.example.com
-
-        source = /var/www
-        target = /var/www at remote server srv2.example.com, user www-data
-        method = rsync on top of remote shell protocoll, eg. rsh/ssh.
-
-      pylsyncd /var/www/./ www-data@srv2.example.com:/var/cluster/www
-
-        source = /var/www
-        target = /var/cluster/www at remote server srv2.example.com,
-                 user www-data, remote paths start at /var/cluster/www
-                 and are relative to local /var/www
-        method = rsync on top of remote shell protocoll, eg. rsh/ssh.
-
-      pylsyncd /var/www/./ srv2.example.com::webdata
-
-        source = /var/www
-        target = module webdata at remote server srv2.example.com,
-                 remote paths are relative to local /var/www
-        method = rsync protocoll
-
-  For more information on destination notation see man rsync(1).
-  ''' % pylsyncd.VIRTUAL_ROOT_MARKER
-
-
-if len(sys.argv) < 3:
-  usage()
-  sys.exit()
-
-pylsyncd.init(sys.argv[1], sys.argv[2:])
+pylsyncd.init(args[0], args[1:])
 pylsyncd.loop()
 
