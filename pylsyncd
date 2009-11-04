@@ -30,7 +30,7 @@ from optparse import OptionParser
 LOG_FORMAT_MSG = '%(asctime)s %(name)s[%(process)s]: %(message)s'
 LOG_FORMAT_TIME = '%b %d %T'
 LOG_FORMAT_MSG_DEBUG = '%(asctime)s %(name)s[%(process)s]' \
-    + ' (%(filename)12s:%(lineno).3d) [%(levelname)8s]: %(message)s'
+    + ' (%(filename)s:%(lineno).3d) [%(levelname)8s]: %(message)s'
 LOG_FORMAT_TIME_DEBUG = '%T'
 
 # Logging
