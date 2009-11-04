@@ -23,6 +23,7 @@ import threading
 
 from pylsyncd import *
 
+log = logging.getLogger("pylsyncd")
 
 # Function that explains how to use the script
 def usage():
@@ -78,11 +79,10 @@ def usage():
 if len(sys.argv) < 3:
   usage()
   sys.exit()
-logging.basicConfig(level=logging.DEBUG)
 source = Source(sys.argv[1])
 destinations = [Destination(source, i) for i in sys.argv[2:]]
 num_worker_threads = len(sys.argv) - 2
-logging.debug('Total additional threads: %s' % num_worker_threads)
+log.debug('Total additional threads: %s' % num_worker_threads)
 
 monitor = threading.Event() # Synchronize worker threads with Monitor
 

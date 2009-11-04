@@ -26,7 +26,6 @@ import threading
 import time
 
 import pyinotify
-pyinotify.log.setLevel(0)
 
 ##### BEGIN: Global constants #####
 
@@ -70,6 +69,21 @@ queues = []
 
 ##### END:   Global variables #####
 
+##### BEGIN: Logging #####
+
+def logger_init():
+  log = logging.getLogger("pylsyncd")
+  log_handler = logging.StreamHandler()
+  log_handler.setFormatter(
+    logging.Formatter("[pylsyncd %(levelname)s] %(message)s"))
+  log.addHandler(log_handler)
+  log.setLevel(logging.DEBUG)
+  return log
+
+log = logger_init()
+
+##### END:   Logging #####
+
 ##### BEGIN: Class definitions #####
 
 class Source(object):
@@ -83,7 +97,7 @@ class Source(object):
     else:
       self.vroot = None
 
-    logging.debug('Registered source: %s' % self)
+    log.debug('Registered source: %s' % self)
 
   def __repr__(self):
     return '<Source path=%s vroot=%s>' % (self.path, self.vroot)
@@ -95,7 +109,7 @@ class Destination(object):
     self.remote = False
     self.name = None
     self.path = s
-    logging.debug('Registered destination: %s' % self)
+    log.debug('Registered destination: %s' % self)
 
   def __repr__(self):
     return '<Destination path=%s remote=%s name=%s source=%s queue=%s>' \
@@ -156,7 +170,7 @@ class Destination(object):
     if not len(self.queue):
       return True
 
-    logging.debug('%s - Processing %d items' % (self.name, len(self.queue)))
+    log.debug('%s - Processing %d items' % (self.name, len(self.queue)))
     self.queue.optimize()
 
     if self.source.vroot is None:
@@ -168,7 +182,7 @@ class Destination(object):
         + os.path.sep, self.path, recursive=x.recursive))
 
     if len(self.queue):
-      logging.error('%s - Error synchronizing %d items.'
+      log.error('%s - Error synchronizing %d items.'
           % (self.name, len(self.queue)))
       return False
     return True
@@ -208,7 +222,7 @@ class ItemQueue(object):
     numitems = len(self.items)
     if numitems < 2:
       return
-    logging.debug('Optimizing %d items' % numitems)
+    log.debug('Optimizing %d items' % numitems)
 
     # Least specific path first
     self.items.sort(lambda x,y: len(x.path) - len(y.path))
@@ -221,7 +235,7 @@ class ItemQueue(object):
     # Get rid of deleted items
     self.items = filter(lambda x: os.path.exists(x.path), self.items)
 
-    logging.debug('Optimizing %d items is complete. Remaining items: %d'
+    log.debug('Optimizing %d items is complete. Remaining items: %d'
       % (numitems, len(self.items)))
 
   def filter(self, function):
@@ -283,9 +297,9 @@ class PEvent(pyinotify.ProcessEvent):
 # Execution wrapper
 def execute(command, args):
   if not os.access(command, os.X_OK):
-    logging.error('Unable to execute: %s' % command)
+    log.error('Unable to execute: %s' % command)
     return False
-  logging.debug('Executing: %s %s' % (command, ' '.join(args)))
+  log.debug('Executing: %s %s' % (command, ' '.join(args)))
   return subprocess.call([command] + args) == 0
 
 # Rsync wrapper
@@ -311,10 +325,10 @@ def worker(monitor, q, source, destination):
   # Wait until all paths are watched by inotify
   monitor.wait()
 
-  logging.info('%s - Starting initial sync' % destination.name)
+  log.info('%s - Starting initial sync' % destination.name)
   destination.queue.add(Item(source.path, recursive=True))
   if not destination.synchronize():
-    logging.error('%s - Initial sync failed. Removing destination!'
+    log.error('%s - Initial sync failed. Removing destination!'
         % destination.name)
     return
 
@@ -322,7 +336,7 @@ def worker(monitor, q, source, destination):
   timer.start(TIMER_LIMIT)
   while True:
     try:
-      logging.debug('%s - Remaining %f (%d items)' %
+      log.debug('%s - Remaining %f (%d items)' %
         (destination.name, timer.remaining(), len(destination.queue)))
       item = q.get(block=True, timeout=timer.remaining())
       destination.queue.add(item)
@@ -331,7 +345,7 @@ def worker(monitor, q, source, destination):
       timer.reset()
       continue
     if len(destination.queue) >= MAX_CHANGES:
-      logging.info('%s - MAX_CHANGES=%d reached, processing items now...'
+      log.info('%s - MAX_CHANGES=%d reached, processing items now...'
           % (destination.name, MAX_CHANGES))
       destination.synchronize()
       timer.reset()
@@ -346,7 +360,7 @@ def Monitor(monitor, source):
   # Set up the inotify handler watcher
   notifier = pyinotify.Notifier(wm, PEvent())
   wm.add_watch(source.path, MONITOR_EV, rec=True, auto_add=True)
-  logging.info('Monitor initialized!')
+  log.info('Monitor initialized!')
   monitor.set()
   notifier.loop()
 
