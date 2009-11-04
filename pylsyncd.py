@@ -60,12 +60,11 @@ VIRTUAL_ROOT_MARKER     = '%s.%s' % (os.path.sep, os.path.sep)
 
 ##### BEGIN: Global variables #####
 
-# Watch Monitor
-wm = pyinotify.WatchManager()
-# Number of workers (one thread per destination)
-num_worker_threads = 0
-# Queues of the worker threads where the modified directories go
-queues = []
+_watchmanager = None
+_notifier = None
+_nworkers = 0
+_queues = []
+_monitoring = None
 
 ##### END:   Global variables #####
 
@@ -174,11 +173,11 @@ class Destination(object):
     self.queue.optimize()
 
     if self.source.vroot is None:
-      self.queue.filter(lambda x: not rsync(x.path + os.path.sep,
+      self.queue.filter(lambda x: not _rsync(x.path + os.path.sep,
         self.path, recursive=x.recursive))
     else:
       # Rewrite source paths on the fly to include the virtual root marker
-      self.queue.filter(lambda x: not rsync(x.vpath(self.source.vroot)
+      self.queue.filter(lambda x: not _rsync(x.vpath(self.source.vroot)
         + os.path.sep, self.path, recursive=x.recursive))
 
     if len(self.queue):
@@ -229,7 +228,7 @@ class ItemQueue(object):
 
     # Find items with the recursive flag and get rid of all queued subdirs
     for parent in filter(lambda x: x.recursive, self.items):
-      self.items = filter(lambda x: not is_subdir(parent.path, x.path),
+      self.items = filter(lambda x: not _is_subdir(parent.path, x.path),
           self.items)
 
     # Get rid of deleted items
@@ -266,12 +265,13 @@ class Timer:
 
 # This class inherits from ProcessEvents and overloads the interesting
 # methods
-class PEvent(pyinotify.ProcessEvent):
+class ProcessEvent(pyinotify.ProcessEvent):
+  global _queues
 
   def process_IN_CREATE(self, event):
     # Queue the new directory itself, recursively
     if event.dir:
-      for q in queues:
+      for q in _queues:
         q.put(Item(os.path.normpath(os.path.join(event.path, event.name)),
           recursive=True))
     else:
@@ -280,50 +280,89 @@ class PEvent(pyinotify.ProcessEvent):
   def process_IN_MOVED_TO(self, event):
     # Queue the renamed directory itself, recursively
     if event.dir:
-      for q in queues:
+      for q in _queues:
         q.put(Item(os.path.normpath(os.path.join(event.path, event.name)),
           recursive=True))
     else:
       self.process_default(event)
 
   def process_default(self, event):
-    for q in queues:
+    for q in _queues:
       q.put(Item(event.path))
 
 ##### END:   Class definitions #####
 
-##### BEGIN: Functions #####
+##### BEGIN: Helper Functions #####
 
-# Execution wrapper
-def execute(command, args):
+def _execute(command, args):
   if not os.access(command, os.X_OK):
     log.error('Unable to execute: %s' % command)
     return False
   log.debug('Executing: %s %s' % (command, ' '.join(args)))
   return subprocess.call([command] + args) == 0
 
-# Rsync wrapper
-def rsync(source, destination, recursive=False):
+def _rsync(source, destination, recursive=False):
   if source == None or destination == None:
     assert False, "Both source and destination must be provided"
   opts = RSYNC_OPTIONS_RECURSIVE if recursive else RSYNC_OPTIONS
-  return execute(RSYNC_PATH, opts.split() + [source, destination])
+  return _execute(RSYNC_PATH, opts.split() + [source, destination])
 
-# Function that checks if a given dir is a subdir of given parent dir
-def is_subdir(parent, dir):
+def _is_subdir(parent, dir):
   path_parent = os.path.abspath(parent)
   path_dir = os.path.abspath(dir)
   if len(path_dir) > len(path_parent) and path_dir.startswith(path_parent):
     return True
   return False
 
-##### END:   Functions #####
+##### END:   Helper Functions #####
 
-##### BEGIN: Worker Synchronization Threads #####
+##### BEGIN: Functions #####
 
-def worker(monitor, q, source, destination):
+def init(source, destinations):
+  global _monitoring
+  global _notifier
+  global _nworkers
+  global _queues
+  global _watchmanager
+
+  source = Source(source)
+  destinations = [Destination(source, i) for i in destinations]
+
+  _nworkers = len(destinations)
+  log.debug('Total additional threads: %s' % _nworkers)
+
+  _monitoring = threading.Event()
+  _watchmanager = pyinotify.WatchManager()
+  _notifier = pyinotify.Notifier(_watchmanager, ProcessEvent())
+
+  for destination in destinations:
+    q = Queue.Queue(0) # infinite size
+    _queues.append(q)
+    t = threading.Thread(target=worker, args=(q, source, destination))
+    t.setDaemon(True)
+    t.start()
+
+  monitor(source)
+
+def monitor(source):
+  global _watchmanager
+  global _monitoring
+
+  assert not _monitoring.is_set()
+
+  _watchmanager.add_watch(source.path, MONITOR_EV, rec=True, auto_add=True)
+  _monitoring.set()
+  log.info('Monitor initialized!')
+
+def loop(*args, **kwargs):
+  global _notifier
+  return _notifier.loop(*args, **kwargs)
+
+def worker(q, source, destination):
+  global _monitoring
+
   # Wait until all paths are watched by inotify
-  monitor.wait()
+  _monitoring.wait()
 
   log.info('%s - Starting initial sync' % destination.name)
   destination.queue.add(Item(source.path, recursive=True))
@@ -350,19 +389,5 @@ def worker(monitor, q, source, destination):
       destination.synchronize()
       timer.reset()
 
-##### END:   Worker Synchronization Threads #####
-
-##### BEGIN: Monitor #####
-
-# Function that adds the inotify event handlers to the directories and defines
-# the event processor
-def Monitor(monitor, source):
-  # Set up the inotify handler watcher
-  notifier = pyinotify.Notifier(wm, PEvent())
-  wm.add_watch(source.path, MONITOR_EV, rec=True, auto_add=True)
-  log.info('Monitor initialized!')
-  monitor.set()
-  notifier.loop()
-
-##### END:   Monitor #####
+##### END:   Functions #####
 

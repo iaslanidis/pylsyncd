@@ -79,19 +79,7 @@ def usage():
 if len(sys.argv) < 3:
   usage()
   sys.exit()
-source = pylsyncd.Source(sys.argv[1])
-destinations = [pylsyncd.Destination(source, i) for i in sys.argv[2:]]
-num_worker_threads = len(sys.argv) - 2
-log.debug('Total additional threads: %s' % num_worker_threads)
 
-monitor = threading.Event() # Synchronize worker threads with Monitor
-
-for destination in destinations:
-  q = Queue.Queue(0) # infinite size
-  pylsyncd.queues.append(q)
-  t = threading.Thread(target=pylsyncd.worker, args=(monitor, q, source, destination))
-  t.setDaemon(True)
-  t.start()
-
-pylsyncd.Monitor(monitor, source)
+pylsyncd.init(sys.argv[1], sys.argv[2:])
+pylsyncd.loop()
 
