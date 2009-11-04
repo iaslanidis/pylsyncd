@@ -21,7 +21,7 @@ import sys
 import logging
 import threading
 
-from pylsyncd import *
+import pylsyncd
 
 log = logging.getLogger("pylsyncd")
 
@@ -73,14 +73,14 @@ def usage():
         method = rsync protocoll
 
   For more information on destination notation see man rsync(1).
-  ''' % VIRTUAL_ROOT_MARKER
+  ''' % pylsyncd.VIRTUAL_ROOT_MARKER
 
 
 if len(sys.argv) < 3:
   usage()
   sys.exit()
-source = Source(sys.argv[1])
-destinations = [Destination(source, i) for i in sys.argv[2:]]
+source = pylsyncd.Source(sys.argv[1])
+destinations = [pylsyncd.Destination(source, i) for i in sys.argv[2:]]
 num_worker_threads = len(sys.argv) - 2
 log.debug('Total additional threads: %s' % num_worker_threads)
 
@@ -88,10 +88,10 @@ monitor = threading.Event() # Synchronize worker threads with Monitor
 
 for destination in destinations:
   q = Queue.Queue(0) # infinite size
-  queues.append(q)
-  t = threading.Thread(target=worker, args=(monitor, q, source, destination))
+  pylsyncd.queues.append(q)
+  t = threading.Thread(target=pylsyncd.worker, args=(monitor, q, source, destination))
   t.setDaemon(True)
   t.start()
 
-Monitor(monitor, source)
+pylsyncd.Monitor(monitor, source)
 
