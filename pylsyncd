@@ -54,6 +54,7 @@ if options.debug:
   log.setLevel(logging.DEBUG)
   pylsyncd.pyinotify.log.setLevel(logging.DEBUG)
 
+log.info('Starting up... (%s)' % parser.get_version())
 pylsyncd.init(args[0], args[1:])
 pylsyncd.loop()
 

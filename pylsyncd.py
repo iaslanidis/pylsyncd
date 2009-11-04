@@ -96,7 +96,7 @@ class Source(object):
     else:
       self.vroot = None
 
-    log.debug('Registered source: %s' % self)
+    log.info('Registered source: %s' % self)
 
   def __repr__(self):
     return '<Source path=%s vroot=%s>' % (self.path, self.vroot)
@@ -108,7 +108,7 @@ class Destination(object):
     self.remote = False
     self.name = None
     self.path = s
-    log.debug('Registered destination: %s' % self)
+    log.info('Registered destination: %s' % self)
 
   def __repr__(self):
     return '<Destination path=%s remote=%s name=%s source=%s queue=%s>' \
@@ -298,7 +298,7 @@ def _execute(command, args):
   if not os.access(command, os.X_OK):
     log.error('Unable to execute: %s' % command)
     return False
-  log.debug('Executing: %s %s' % (command, ' '.join(args)))
+  log.info('Executing: %s %s' % (command, ' '.join(args)))
   return subprocess.call([command] + args) == 0
 
 def _rsync(source, destination, recursive=False):
@@ -328,8 +328,11 @@ def init(source, destinations):
   source = Source(source)
   destinations = [Destination(source, i) for i in destinations]
 
+  log.info('Aggregating changes within: %ds' % TIMER_LIMIT)
+  log.info('Number of changes forcing synchronization: %d' % MAX_CHANGES)
+
   _nworkers = len(destinations)
-  log.debug('Total additional threads: %s' % _nworkers)
+  log.info('Number of additional threads: %s' % _nworkers)
 
   _monitoring = threading.Event()
   _watchmanager = pyinotify.WatchManager()
@@ -350,9 +353,9 @@ def monitor(source):
 
   assert not _monitoring.is_set()
 
+  log.info('Initializing monitor for path: %s' % source.path)
   _watchmanager.add_watch(source.path, MONITOR_EV, rec=True, auto_add=True)
   _monitoring.set()
-  log.info('Monitor initialized!')
 
 def loop(*args, **kwargs):
   global _notifier
@@ -364,9 +367,11 @@ def worker(q, source, destination):
   # Wait until all paths are watched by inotify
   _monitoring.wait()
 
-  log.info('%s - Starting initial sync' % destination.name)
+  log.info('%s - Starting initial sync...' % destination.name)
   destination.queue.add(Item(source.path, recursive=True))
-  if not destination.synchronize():
+  if destination.synchronize():
+    log.info('%s - Initial sync complete.' % destination.name)
+  else:
     log.error('%s - Initial sync failed. Removing destination!'
         % destination.name)
     return
