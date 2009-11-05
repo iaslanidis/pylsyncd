@@ -48,20 +48,20 @@ usage = 'Usage: %prog [options] <directory to watch> <rsync destinations...>'
 parser = OptionParser(usage=usage, version=version)
 
 parser.add_option('-d', '--debug', action='store_true',
-    dest='debug', help='Debug mode')
+    dest='debug', help='debug mode')
 parser.add_option('-v', '--verbose', action='store_true',
-    dest='verbose', help='Verbose mode')
+    dest='verbose', help='verbose mode')
 parser.add_option('-q', '--quiet', action='store_true',
-    dest='quiet', help='Only print errors')
+    dest='quiet', help='only print errors')
 parser.add_option('-i', '--initial-sync', action='store_true',
-    dest='initial_sync', help='Do a full recursive sync after initializing')
+    dest='initial_sync', help='do a full recursive sync after initializing')
 parser.add_option('-n', '--dry-run', action='store_true',
-    dest='dry_run', help='Simulate external command execution')
+    dest='dry_run', help='simulate external command execution')
 parser.add_option('-s', '--syslog', action='store_true',
-    dest='syslog', help='Log to syslog')
+    dest='syslog', help='log to syslog')
 parser.add_option('--syslog-facility', type='string', action='store',
     dest='syslog_facility', default='USER',
-    help='Specify the syslog facility (Default: USER)')
+    help='specify the syslog facility (default: USER)')
 
 (options, args) = parser.parse_args()
 
