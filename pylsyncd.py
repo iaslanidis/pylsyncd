@@ -72,7 +72,12 @@ _dryrun = False
 
 ##### BEGIN: Logging #####
 
+class _LogHandler(logging.Handler):
+  def emit(self, record):
+    pass
+
 log = logging.getLogger('pylsyncd')
+log.addHandler(_LogHandler())
 
 ##### END:   Logging #####
 
