@@ -37,7 +37,7 @@ LOG_FORMAT_TIME_DEBUG = '%T'
 LOG_FORMAT_MSG_SYSLOG = '%(name)s[%(process)s]: %(message)s'
 
 # Logging
-log = logging.getLogger("pylsyncd")
+log = logging.getLogger('pylsyncd')
 log.setLevel(logging.WARNING)
 
 # Option parsing
@@ -46,19 +46,19 @@ usage = 'Usage: %prog [options] <directory to watch> <rsync destinations...>'
 
 parser = OptionParser(usage=usage, version=version)
 
-parser.add_option("-d", "--debug", action="store_true",
-                  dest="debug", help="Debug mode")
-parser.add_option("-v", "--verbose", action="store_true",
-                  dest="verbose", help="Verbose mode")
-parser.add_option("-q", "--quiet", action="store_true",
-                  dest="quiet", help="Only print errors")
-parser.add_option("-n", "--dry-run", action="store_true",
-                  dest="dryrun", help="Simulate external command execution")
-parser.add_option("-s", "--syslog", action="store_true",
-                  dest="syslog", help="Log to syslog")
-parser.add_option("--syslog-facility", action="store", type="string",
-                  dest="syslog_facility", default="USER",
-                  help="Specify the syslog facility (Default: USER)")
+parser.add_option('-d', '--debug', action='store_true',
+    dest='debug', help='Debug mode')
+parser.add_option('-v', '--verbose', action='store_true',
+    dest='verbose', help='Verbose mode')
+parser.add_option('-q', '--quiet', action='store_true',
+    dest='quiet', help='Only print errors')
+parser.add_option('-n', '--dry-run', action='store_true',
+    dest='dryrun', help='Simulate external command execution')
+parser.add_option('-s', '--syslog', action='store_true',
+    dest='syslog', help='Log to syslog')
+parser.add_option('--syslog-facility', type='string', action='store',
+    dest='syslog_facility', default='USER',
+    help='Specify the syslog facility (Default: USER)')
 
 (options, args) = parser.parse_args()
 

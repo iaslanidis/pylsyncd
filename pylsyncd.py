@@ -47,7 +47,7 @@ MONITOR_EV = pyinotify.EventsCodes.ALL_FLAGS['IN_CREATE']      | \
              pyinotify.EventsCodes.ALL_FLAGS['IN_CLOSE_WRITE']
 
 # Rsync settings
-RSYNC_PATH = "/usr/bin/rsync"
+RSYNC_PATH = '/usr/bin/rsync'
 RSYNC_OPTIONS           = '-Rd -HpltogD --delete'
 RSYNC_OPTIONS_RECURSIVE = '-Rr -HpltogD --delete'
 # Warning: The first two options are mandatory for correct behaviour!
@@ -298,7 +298,7 @@ def _execute(command, args):
 
 def _rsync(source, destination, recursive=False):
   if source == None or destination == None:
-    assert False, "Both source and destination must be provided"
+    assert False, 'Both source and destination must be provided'
   opts = RSYNC_OPTIONS_RECURSIVE if recursive else RSYNC_OPTIONS
   return _execute(RSYNC_PATH, opts.split() + [source, destination])
 
