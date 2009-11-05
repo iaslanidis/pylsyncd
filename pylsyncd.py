@@ -334,7 +334,7 @@ def init(source, destinations, dryrun=False):
   log.info('Number of changes forcing synchronization: %d' % MAX_CHANGES)
 
   _nworkers = len(destinations)
-  log.info('Number of additional threads: %s' % _nworkers)
+  log.warning('Total number of additional threads: %s' % _nworkers)
 
   _monitoring = threading.Event()
   _watchmanager = pyinotify.WatchManager()
@@ -360,7 +360,7 @@ def monitor(source):
 
   assert not _monitoring.is_set()
 
-  log.info('Initializing monitor for path: %s' % source.path)
+  log.warning('Initializing monitor for path: %s' % source.path)
   _watchmanager.add_watch(source.path, MONITOR_EV, rec=True, auto_add=True)
   _monitoring.set()
 
@@ -374,10 +374,10 @@ def worker(q, source, destination):
   # Wait until all paths are watched by inotify
   _monitoring.wait()
 
-  log.info('[%s] Starting initial sync...' % destination.name)
+  log.warning('[%s] Starting initial sync...' % destination.name)
   destination.queue.add(Item(source.path, recursive=True))
   if destination.synchronize():
-    log.info('[%s] Initial sync complete.' % destination.name)
+    log.warning('[%s] Initial sync complete.' % destination.name)
   else:
     log.error('[%s] Initial sync failed. Removing destination!'
         % destination.name)

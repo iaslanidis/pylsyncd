@@ -21,6 +21,8 @@
 import Queue
 import sys
 import logging
+from logging.handlers import SysLogHandler
+
 import threading
 
 import pylsyncd
@@ -33,14 +35,11 @@ LOG_FORMAT_TIME = '%b %d %T'
 LOG_FORMAT_MSG_DEBUG = '%(asctime)s %(name)s[%(process)s]' \
     + ' (%(filename)s:%(lineno).3d) [%(levelname)8s]: %(message)s'
 LOG_FORMAT_TIME_DEBUG = '%T'
+LOG_FORMAT_MSG_SYSLOG = '%(name)s[%(process)s]: %(message)s'
 
 # Logging
 log = logging.getLogger("pylsyncd")
 log.setLevel(logging.WARNING)
-log_format = logging.Formatter(LOG_FORMAT_MSG, LOG_FORMAT_TIME)
-log_handler = logging.StreamHandler()
-log_handler.setFormatter(log_format)
-log.addHandler(log_handler)
 
 # Option parsing
 version = '%prog version 0.1'
@@ -56,24 +55,44 @@ parser.add_option("-q", "--quiet", action="store_true",
                   dest="quiet", help="Only print errors")
 parser.add_option("-n", "--dry-run", action="store_true",
                   dest="dryrun", help="Simulate external command execution")
+parser.add_option("-s", "--syslog", action="store_true",
+                  dest="syslog", help="Log to syslog")
+parser.add_option("--syslog-facility", action="store", type="string",
+                  dest="syslog_facility", default="USER",
+                  help="Specify the syslog facility (Default: USER)")
 
 (options, args) = parser.parse_args()
 
 if len(args) < 2:
   parser.print_help()
   sys.exit(1)
-if options.verbose:
-  log.setLevel(logging.INFO)
-if options.quiet:
-  log.setLevel(logging.ERROR)
-if options.debug:
-  log_format = logging.Formatter(LOG_FORMAT_MSG_DEBUG, LOG_FORMAT_TIME_DEBUG)
+
+if options.syslog and not options.debug:
+  log_format = logging.Formatter(LOG_FORMAT_MSG_SYSLOG)
+  log_handler = SysLogHandler('/dev/log', options.syslog_facility.lower())
   log_handler.setFormatter(log_format)
+  log.addHandler(log_handler)
+elif options.debug:
+  log_format = logging.Formatter(LOG_FORMAT_MSG_DEBUG, LOG_FORMAT_TIME_DEBUG)
+  log_handler = logging.StreamHandler()
+  log_handler.setFormatter(log_format)
+  log.addHandler(log_handler)
   log.setLevel(logging.DEBUG)
   pylsyncd.pyinotify.log.setLevel(logging.DEBUG)
+else:
+  log_format = logging.Formatter(LOG_FORMAT_MSG, LOG_FORMAT_TIME)
+  log_handler = logging.StreamHandler()
+  log_handler.setFormatter(log_format)
+  log.addHandler(log_handler)
+
+if not options.debug:
+  if options.verbose:
+    log.setLevel(logging.INFO)
+  if options.quiet:
+    log.setLevel(logging.ERROR)
 
 # Main script
-log.info('Starting up... (%s)' % parser.get_version())
+log.warning('Starting up... (%s)' % parser.get_version())
 pylsyncd.init(args[0], args[1:], dryrun=options.dryrun)
 pylsyncd.loop()
 
