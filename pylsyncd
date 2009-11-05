@@ -19,6 +19,7 @@
 # Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 import Queue
+import signal
 import sys
 import logging
 import threading
@@ -89,6 +90,22 @@ if not options.debug:
     log.setLevel(logging.INFO)
   if options.quiet:
     log.setLevel(logging.ERROR)
+
+# Signal handling
+def signal_handler(signum, frame):
+  if signum == signal.SIGINT:
+    log.warning('Received SIGINT, exiting...')
+    sys.exit(0)
+  elif signum == signal.SIGHUP:
+    log.warning('Received SIGHUP, forcing full synchronization...')
+    # FIXME
+  else:
+    log.warning('Received signal number %d, exiting...' % signum)
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGHUP, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
 
 # Main script
 log.warning('Starting up... (%s)' % parser.get_version())
