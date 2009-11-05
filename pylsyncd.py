@@ -304,7 +304,7 @@ def _rsync(source, destination, recursive=False):
   return _execute(RSYNC_PATH, opts.split() + [source, destination])
 
 def _is_subdir(parent, dir):
-  path_parent = os.path.abspath(parent)
+  path_parent = os.path.abspath(parent) + os.path.sep
   path_dir = os.path.abspath(dir)
   if len(path_dir) > len(path_parent) and path_dir.startswith(path_parent):
     return True
