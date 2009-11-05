@@ -53,8 +53,10 @@ parser.add_option('-v', '--verbose', action='store_true',
     dest='verbose', help='Verbose mode')
 parser.add_option('-q', '--quiet', action='store_true',
     dest='quiet', help='Only print errors')
+parser.add_option('-i', '--initial-sync', action='store_true',
+    dest='initial_sync', help='Do a full recursive sync after initializing')
 parser.add_option('-n', '--dry-run', action='store_true',
-    dest='dryrun', help='Simulate external command execution')
+    dest='dry_run', help='Simulate external command execution')
 parser.add_option('-s', '--syslog', action='store_true',
     dest='syslog', help='Log to syslog')
 parser.add_option('--syslog-facility', type='string', action='store',
@@ -98,7 +100,7 @@ def signal_handler(signum, frame):
     sys.exit(0)
   elif signum == signal.SIGHUP:
     log.warning('Received SIGHUP, forcing full synchronization...')
-    # FIXME
+    pylsyncd.queue_full_sync()
   else:
     log.warning('Received signal number %d, exiting...' % signum)
     sys.exit(0)
@@ -109,6 +111,7 @@ signal.signal(signal.SIGTERM, signal_handler)
 
 # Main script
 log.warning('Starting up... (%s)' % parser.get_version())
-pylsyncd.init(args[0], args[1:], dryrun=options.dryrun)
+pylsyncd.init(args[0], args[1:], dry_run=options.dry_run,
+    initial_sync=options.initial_sync)
 pylsyncd.loop()
 

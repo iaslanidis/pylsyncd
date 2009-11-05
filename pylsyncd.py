@@ -61,12 +61,15 @@ VIRTUAL_ROOT_MARKER     = '%s.%s' % (os.path.sep, os.path.sep)
 
 ##### BEGIN: Global variables #####
 
+source = None
+destinations = []
+
 _watchmanager = None
 _notifier = None
 _nworkers = 0
 _queues = []
 _monitoring = None
-_dryrun = False
+_dry_run = False
 
 ##### END:   Global variables #####
 
@@ -100,12 +103,13 @@ class Source(object):
     return '<Source path=%s vroot=%s>' % (self.path, self.vroot)
 
 class Destination(object):
-  def __init__(self, source, s):
+  def __init__(self, source, path, initial_sync=False):
+    self.initial_sync = initial_sync
     self.source = source
     self.queue = ItemQueue()
     self.remote = False
     self.name = None
-    self.path = s
+    self.path = path
     log.info('Registered destination: %s' % self)
 
   def __repr__(self):
@@ -263,38 +267,35 @@ class Timer:
 # This class inherits from ProcessEvents and overloads the interesting
 # methods
 class ProcessEvent(pyinotify.ProcessEvent):
-  global _queues
 
   def process_IN_CREATE(self, event):
     # Queue the new directory itself, recursively
     if event.dir:
-      for q in _queues:
-        q.put(Item(os.path.normpath(os.path.join(event.path, event.name)),
-          recursive=True))
+      queue_item(Item(os.path.normpath(os.path.join(event.path, event.name)),
+        recursive=True))
     else:
       self.process_default(event)
 
   def process_IN_MOVED_TO(self, event):
     # Queue the renamed directory itself, recursively
     if event.dir:
-      for q in _queues:
-        q.put(Item(os.path.normpath(os.path.join(event.path, event.name)),
-          recursive=True))
+      queue_item(Item(os.path.normpath(os.path.join(event.path, event.name)),
+        recursive=True))
     else:
       self.process_default(event)
 
   def process_default(self, event):
-    for q in _queues:
-      q.put(Item(event.path))
+    # Queue the path containing the event, non-recursively
+    queue_item(Item(event.path))
 
 ##### END:   Class definitions #####
 
 ##### BEGIN: Helper Functions #####
 
 def _execute(command, args):
-  global _dryrun
+  global _dry_run
   log.info('Executing: %s %s' % (command, ' '.join(args)))
-  return True if _dryrun else subprocess.call([command] + args) == 0
+  return True if _dry_run else subprocess.call([command] + args) == 0
 
 def _rsync(source, destination, recursive=False):
   if source == None or destination == None:
@@ -313,22 +314,25 @@ def _is_subdir(parent, dir):
 
 ##### BEGIN: Functions #####
 
-def init(source, destinations, dryrun=False):
-  global _dryrun
+def init(source_path, destination_paths, dry_run=False, initial_sync=False):
+  global _dry_run
   global _monitoring
   global _notifier
   global _nworkers
   global _queues
   global _watchmanager
+  global source
+  global destinations
 
-  if dryrun:
-    _dryrun = True
+  if dry_run:
+    _dry_run = True
     log.warning('DRY-RUN requested, not executing any external commands!')
   else:
     check_dependencies()
 
-  source = Source(source)
-  destinations = [Destination(source, i) for i in destinations]
+  source = Source(source_path)
+  destinations = [Destination(source, path, initial_sync)
+      for path in destination_paths]
 
   log.info('Aggregating changes within: %ds' % TIMER_LIMIT)
   log.info('Number of changes forcing synchronization: %d' % MAX_CHANGES)
@@ -339,6 +343,9 @@ def init(source, destinations, dryrun=False):
   _monitoring = threading.Event()
   _watchmanager = pyinotify.WatchManager()
   _notifier = pyinotify.Notifier(_watchmanager, ProcessEvent())
+
+  if initial_sync:
+    log.warning('Initial sync requested, this might take a while')
 
   for destination in destinations:
     q = Queue.Queue(0) # infinite size
@@ -374,14 +381,15 @@ def worker(q, source, destination):
   # Wait until all paths are watched by inotify
   _monitoring.wait()
 
-  log.warning('[%s] Starting initial sync...' % destination.name)
-  destination.queue.add(Item(source.path, recursive=True))
-  if destination.synchronize():
-    log.warning('[%s] Initial sync complete.' % destination.name)
-  else:
-    log.error('[%s] Initial sync failed. Removing destination!'
-        % destination.name)
-    return
+  if destination.initial_sync:
+    destination.queue.add(Item(source.path, recursive=True))
+    log.warning('[%s] Starting initial sync...' % destination.name)
+    if destination.synchronize():
+      log.warning('[%s] Initial sync complete.' % destination.name)
+    else:
+      log.error('[%s] Initial sync failed. Removing destination!'
+          % destination.name)
+      return # FIXME
 
   timer = Timer()
   timer.start(TIMER_LIMIT)
@@ -405,6 +413,18 @@ def worker(q, source, destination):
             % (destination.name, MAX_CHANGES))
         destination.synchronize()
         timer.reset()
+
+def queue_full_sync():
+  global _queues
+  global source
+  assert source is not None
+  log.warning('Adding full recursive synchronization item to queue...')
+  queue_item(Item(source.path, recursive=True))
+
+def queue_item(item):
+  global _queues
+  for q in _queues:
+    q.put(item)
 
 ##### END:   Functions #####
 
