@@ -21,12 +21,11 @@
 import Queue
 import sys
 import logging
-from logging.handlers import SysLogHandler
-
 import threading
 
 import pylsyncd
 
+from logging.handlers import SysLogHandler
 from optparse import OptionParser
 
 # Defaults
