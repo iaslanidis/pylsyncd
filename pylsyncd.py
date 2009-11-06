@@ -395,6 +395,7 @@ def monitor(source):
 
   log.warning('Initializing monitor for path: %s' % source.path)
   _watchmanager.add_watch(source.path, MONITOR_EV, rec=True, auto_add=True)
+  log.warning('Initialization complete, monitoring changes...')
   _monitoring.set()
 
 def loop(*args, **kwargs):
