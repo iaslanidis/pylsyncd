@@ -43,7 +43,8 @@ MAX_CHANGES_SYNC = 100
 
 # The max length of each worker's item queue (before optimization!). This
 # should never be reached in your workload and will block the pyinotify
-# event monitor. Avoid hitting this limit at all costs and adjust accordingly.
+# event monitor. Avoid hitting this limit at all costs and adjust accordingly,
+# taking the maximal memory footprint into consideration.
 MAX_QUEUE_LEN = 100000
 
 # The amount of time (in seconds) to delay synchronization of a destination
