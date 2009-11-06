@@ -31,10 +31,7 @@ import pyinotify
 ##### BEGIN: Global constants #####
 
 # Timer threshold (seconds) that triggers synchronization. All changes within
-# this timeframe are aggregated, then optimized. If MAX_CHANGES is reached we
-# force optimization and evalute against MAX_CHANGES_SYNC. If it is reached we
-# force synchronization. If not, we continue aggregating changes and do the
-# evaluation again after hitting the next time or max number of changes limit.
+# this timeframe are aggregated, then optimized and finally synchronized.
 TIMER_LIMIT = 60
 
 # Max number of changes in a destination queue forcing queue optimization.
