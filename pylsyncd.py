@@ -222,7 +222,8 @@ class Item(object):
 
   def vpath(self, vroot):
     # Return our path including the virtual root marker
-    return self.path.replace(vroot, vroot + VIRTUAL_ROOT_MARKER[:-1], 1)
+    return self.path.replace(vroot, vroot
+        + VIRTUAL_ROOT_MARKER[:-len(os.path.sep)], 1)
 
 class ItemQueue(object):
   def __init__(self):
