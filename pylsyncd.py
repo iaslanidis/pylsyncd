@@ -28,6 +28,16 @@ import time
 
 import pyinotify
 
+def __check_pyinotify_version():
+  from pkg_resources import parse_version
+  current = pyinotify.__version__
+  require = '0.8.8'
+  if parse_version(current) < parse_version(require):
+    raise ImportWarning(
+        'pyinotify version %s is not supported, need at least version %s'
+        % (current, require))
+__check_pyinotify_version()
+
 ##### BEGIN: Global constants #####
 
 # Timer threshold (seconds) that triggers synchronization. All changes within
