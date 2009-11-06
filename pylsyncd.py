@@ -30,12 +30,36 @@ import pyinotify
 
 ##### BEGIN: Global constants #####
 
-# Threshold that triggers directory synchronization when surpassed
+# Timer threshold (seconds) that triggers synchronization. All changes within
+# this timeframe are aggregated, then optimized. If MAX_CHANGES is reached we
+# force synchronization. If not, we continue aggregating changes and do the
+# evaluation again after hitting the next time or max number of changes limit.
+TIMER_LIMIT = 60
+
+# Max number of changes in a destination queue forcing queue optimization.
 MAX_CHANGES = 1000
 
-# Timer threshold (seconds) that triggers directory synchronization when the
-# countdown expires
-TIMER_LIMIT = 60
+# Max number of remaining changes in a destination queue (after optimization)
+# forcing synchronization.
+MAX_CHANGES_SYNC = 100
+
+# The max length of each worker's item queue (before optimization!). This
+# should never be reached in your workload and will block the pyinotify
+# event monitor. Avoid hitting this limit at all costs and adjust accordingly.
+MAX_QUEUE_LEN = 100000
+
+# The amount of time (in seconds) to delay synchronization of a destination
+# which failed to synchronize earlier. Note that the actual delay will be
+# failcount * TIME_SLEEP_FAILURE seconds until MAX_SYNC_FAILURES is reached.
+TIME_SLEEP_FAILURE = 60
+
+# The max amount of sequential synchronization failures of a destination that
+# will cause the destination to be dropped.
+MAX_SYNC_FAILURES = 5
+
+# Note: The maximum sleep time with the default settings is:
+# sum(map(lambda x: x*TIME_SLEEP_FAILURE, xrange(1,MAX_SYNC_FAILURES+1)))
+#  == 900 seconds (15 minutes)
 
 # Events to monitor
 MONITOR_EV = pyinotify.EventsCodes.ALL_FLAGS['IN_CREATE']      | \
@@ -348,7 +372,7 @@ def init(source_path, destination_paths, dry_run=False, initial_sync=False):
     log.warning('Initial sync requested, this might take a while')
 
   for destination in destinations:
-    q = Queue.Queue(0) # infinite size
+    q = Queue.Queue(MAX_QUEUE_LEN)
     _queues.append(q)
     t = threading.Thread(target=worker, args=(q, source, destination))
     t.setDaemon(True)
@@ -387,13 +411,34 @@ def worker(q, source, destination):
     if destination.synchronize():
       log.warning('[%s] Initial sync complete.' % destination.name)
     else:
-      log.error('[%s] Initial sync failed. Removing destination!'
+      log.error('[%s] Initial sync failed, dropping destination!'
           % destination.name)
       return # FIXME
 
   timer = Timer()
   timer.start(TIMER_LIMIT)
+
+  failcount = 0 # count sequential synchronization failures
+
   while True:
+    if failcount >= MAX_SYNC_FAILURES:
+      log.error('[%s] MAX_SYNC_FAILURES=%d reached, dropping destination!'
+          % (destination.name, MAX_SYNC_FAILURES))
+      return # FIXME
+    elif failcount:
+      sleeptime = failcount * TIME_SLEEP_FAILURE
+      log.warning('[%s] Destination failed to synchronize (failcount=%d).'
+          % (destination.name, failcount)
+          + ' Sleeping %d seconds before the next synchronization'
+          % sleeptime
+          + ' (%d/%d allowed failures).'
+          % (failcount, MAX_SYNC_FAILURES))
+      time.sleep(sleeptime)
+      failcount = 0 if destination.synchronize() else failcount + 1
+      continue
+    else:
+      timer.reset()
+
     try:
       log.debug('[%s] Remaining %f (%d items)' %
         (destination.name, timer.remaining(), len(destination.queue)))
@@ -401,18 +446,18 @@ def worker(q, source, destination):
       destination.queue.add(item)
     except Queue.Empty:
       destination.queue.optimize()
-      destination.synchronize()
-      timer.reset()
+      failcount = 0 if destination.synchronize() else 1
       continue
+
     if len(destination.queue) >= MAX_CHANGES:
       log.debug('[%s] MAX_CHANGES=%d reached, optimizing queue...'
           % (destination.name, MAX_CHANGES))
       destination.queue.optimize()
-      if len(destination.queue) >= MAX_CHANGES:
-        log.warning('[%s] MAX_CHANGES=%d reached, processing items now...'
-            % (destination.name, MAX_CHANGES))
-        destination.synchronize()
-        timer.reset()
+
+    if len(destination.queue) >= MAX_CHANGES_SYNC:
+      log.warning('[%s] MAX_CHANGES_SYNC=%d reached, processing items now!'
+          % (destination.name, MAX_CHANGES_SYNC))
+      failcount = 0 if destination.synchronize() else 1
 
 def queue_full_sync():
   global _queues
