@@ -187,10 +187,10 @@ class Destination(object):
       # The local shortname in the logs is the last dirname:
       #     /foo/bar/baz/ --> baz
       self.name = os.path.normpath(s).rsplit('/', 1)[-1]
-      if not s.endswith('/'):
-        suffix = '/'
+      suffix = '/'
 
-    self._path = s if suffix is None else s + suffix
+    self._path = s if self.remote else os.path.abspath(s)
+    self._path = self._path if suffix is None else self._path + suffix
 
   def synchronize(self):
     if not len(self.queue):
