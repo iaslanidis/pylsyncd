@@ -438,8 +438,6 @@ def worker(q, source, destination):
       time.sleep(sleeptime)
       failcount = 0 if destination.synchronize() else failcount + 1
       continue
-    else:
-      timer.reset()
 
     try:
       log.debug('[%s] Remaining %f (%d items)' %
@@ -447,19 +445,22 @@ def worker(q, source, destination):
       item = q.get(block=True, timeout=timer.remaining())
       destination.queue.add(item)
     except Queue.Empty:
-      destination.queue.optimize()
-      failcount = 0 if destination.synchronize() else 1
+      if len(destination.queue):
+        destination.queue.optimize()
+        failcount = 0 if destination.synchronize() else 1
+      timer.reset()
       continue
 
     if len(destination.queue) >= MAX_CHANGES:
       log.debug('[%s] MAX_CHANGES=%d reached, optimizing queue...'
           % (destination.name, MAX_CHANGES))
       destination.queue.optimize()
-
-    if len(destination.queue) >= MAX_CHANGES_SYNC:
-      log.warning('[%s] MAX_CHANGES_SYNC=%d reached, processing items now!'
-          % (destination.name, MAX_CHANGES_SYNC))
-      failcount = 0 if destination.synchronize() else 1
+      if len(destination.queue) >= MAX_CHANGES_SYNC:
+        log.warning('[%s] MAX_CHANGES_SYNC=%d reached, processing items now!'
+            % (destination.name, MAX_CHANGES_SYNC))
+        destination.queue.optimize()
+        failcount = 0 if destination.synchronize() else 1
+        timer.reset()
 
 def queue_full_sync():
   global _queues
