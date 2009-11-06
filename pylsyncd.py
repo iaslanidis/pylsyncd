@@ -32,6 +32,7 @@ import pyinotify
 
 # Timer threshold (seconds) that triggers synchronization. All changes within
 # this timeframe are aggregated, then optimized. If MAX_CHANGES is reached we
+# force optimization and evalute against MAX_CHANGES_SYNC. If it is reached we
 # force synchronization. If not, we continue aggregating changes and do the
 # evaluation again after hitting the next time or max number of changes limit.
 TIMER_LIMIT = 60
