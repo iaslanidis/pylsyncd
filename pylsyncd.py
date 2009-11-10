@@ -77,7 +77,8 @@ MONITOR_EV = pyinotify.EventsCodes.ALL_FLAGS['IN_CREATE']      | \
              pyinotify.EventsCodes.ALL_FLAGS['IN_MOVE_SELF']   | \
              pyinotify.EventsCodes.ALL_FLAGS['IN_MOVED_FROM']  | \
              pyinotify.EventsCodes.ALL_FLAGS['IN_MOVED_TO']    | \
-             pyinotify.EventsCodes.ALL_FLAGS['IN_CLOSE_WRITE']
+             pyinotify.EventsCodes.ALL_FLAGS['IN_CLOSE_WRITE'] | \
+             pyinotify.EventsCodes.ALL_FLAGS['IN_ONLYDIR']
 
 # Rsync settings
 RSYNC_PATH = '/usr/bin/rsync'
