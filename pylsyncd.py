@@ -82,10 +82,14 @@ MONITOR_EV = pyinotify.EventsCodes.ALL_FLAGS['IN_CREATE']      | \
              pyinotify.EventsCodes.ALL_FLAGS['IN_DONT_FOLLOW']
 
 # Rsync settings
-RSYNC_PATH = '/usr/bin/rsync'
-RSYNC_OPTIONS           = '-Rd -HpltogD --delete'
-RSYNC_OPTIONS_RECURSIVE = '-Rr -HpltogD --delete'
-# Warning: The first two options are mandatory for correct behaviour!
+RSYNC_PATH              = '/usr/bin/rsync'
+RSYNC_OPTIONS           = '-Rd --files-from=- --from0 ' + '-HpltogD --delete'
+RSYNC_OPTIONS_RECURSIVE = '-Rr --files-from=- --from0 ' + '-HpltogD --delete'
+# Note: The first string of options is mandatory for correct behaviour!
+
+# We use null ('\0') delimited paths in rsync's --files-from
+# list to support paths containing newlines.
+RSYNC_PATH_DELIMITER = '\0'
 
 # Assemble remote paths relative to the local virtual root specified by
 # this marker within in the source path definition. Note that this marker
@@ -208,19 +212,29 @@ class Destination(object):
 
     log.debug('[%s] Processing %d items' % (self.name, len(self.queue)))
 
-    if self.source.vroot is None:
-      self.queue.filter(lambda x: not _rsync(x.path + os.path.sep,
-        self.path, recursive=x.recursive))
-    else:
-      # Rewrite source paths on the fly to include the virtual root marker
-      self.queue.filter(lambda x: not _rsync(x.vpath(self.source.vroot)
-        + os.path.sep, self.path, recursive=x.recursive))
+    vroot = os.path.sep if self.source.vroot is None else self.source.vroot
+
+    if self.__synchronize(self.queue.trees, vroot, recursive=True):
+      self.queue.empty_trees()
+
+    if self.__synchronize(self.queue.dirs, vroot, recursive=False):
+      self.queue.empty_dirs()
 
     if len(self.queue):
       log.error('[%s] Error synchronizing %d items.'
           % (self.name, len(self.queue)))
       return False
     return True
+
+  def __synchronize(self, items, vroot, recursive=False):
+    if not len(items):
+      return True
+    if _rsync(vroot, self.path, _generate_relative_path_list(items, vroot),
+            recursive=recursive):
+      log.info('Synchronization of %d %s items finished successfully'
+          % (len(items), 'recursive' if recursive else 'non-recursive'))
+      return True
+    return False
 
 class Item(object):
   def __init__(self, path, recursive=False):
@@ -230,52 +244,63 @@ class Item(object):
   def __repr__(self):
     return '<Item path=%s recursive=%s>' % (self.path, self.recursive)
 
-  def vpath(self, vroot):
-    # Return our path including the virtual root marker
-    return self.path.replace(vroot, vroot
-        + VIRTUAL_ROOT_MARKER[:-len(os.path.sep)], 1)
-
 class ItemQueue(object):
   def __init__(self):
-    self.items = []
+    self.dirs = []   # non-recursive
+    self.trees = []  # recursive
 
   def __repr__(self):
-    return '<ItemQueue numitems=%d>' % len(self.items)
+    return '<ItemQueue numitems=%d dirs=%d trees=%d>' \
+        % (len(self), len(self.dirs), len(self.trees))
 
   def __len__(self):
-    return len(self.items)
+    return len(self.dirs) + len(self.trees)
 
   def add(self, item):
-    for idx, i in enumerate(self.items):
-      if i.path == item.path:
-        if item.recursive and not i.recursive:
-          # Prefer the recursive item
-          self.items[idx] = item
-        return
-    self.items.append(item)
+    # Drop obvious duplicates as soon as possible and
+    # prefer the recursive item over the non-recursive.
+    if item.recursive:
+      if not item.path in self.trees:
+        self.trees.append(item.path)
+    else:
+      if not item.path in self.dirs and not item.path in self.trees:
+        self.dirs.append(item.path)
 
   def optimize(self):
-    numitems = len(self.items)
-    if numitems < 2:
+    numitems = len(self)
+    if not numitems:
       return
-    log.debug('Optimizing %d items' % numitems)
+    log.debug('Optimizing ItemQueue with %d items...' % numitems)
+    log.debug('Before: %s' % self)
 
-    # Least specific path first
-    self.items.sort(lambda x,y: len(x.path) - len(y.path))
+    if len(self.trees):
+      # Sort the least specific tree path first to get rid of as many
+      # subtrees and subdirs as soon as possible. This way we shorten
+      # subsequent filter iterations over self.trees.
+      self.trees.sort(lambda x,y: len(x) - len(y))
 
-    # Find items with the recursive flag and get rid of all queued subdirs
-    for parent in filter(lambda x: x.recursive, self.items):
-      self.items = filter(lambda x: not _is_subdir(parent.path, x.path),
-          self.items)
+      # Get rid of subtrees
+      for tree in self.trees:
+        self.trees = filter(lambda x: not _is_subdir(tree, x), self.trees)
+
+      if len(self.dirs):
+        # Get rid of all subdirs
+        for tree in self.trees:
+          self.dirs = filter(lambda x: not _is_subdir(tree, x), self.dirs)
 
     # Get rid of deleted items
-    self.items = filter(lambda x: os.path.exists(x.path), self.items)
+    self.dirs = filter(lambda x: os.path.exists(x), self.dirs)
+    self.trees = filter(lambda x: os.path.exists(x), self.trees)
 
+    log.debug('After:  %s' % self)
     log.debug('Optimizing %d items is complete. Remaining items: %d'
-      % (numitems, len(self.items)))
+      % (numitems, len(self)))
 
-  def filter(self, function):
-    self.items = filter(function, self.items)
+  def empty_dirs(self):
+    self.dirs = []
+
+  def empty_trees(self):
+    self.trees = []
 
 # Simple timer implementation
 class Timer:
@@ -328,16 +353,25 @@ class ProcessEvent(pyinotify.ProcessEvent):
 
 ##### BEGIN: Helper Functions #####
 
-def _execute(command, args):
+def _rsync(source, destination, iterable, recursive=False):
   global _dry_run
-  log.info('Executing: %s %s' % (command, ' '.join(args)))
-  return True if _dry_run else subprocess.call([command] + args) == 0
+  assert source is not None
+  assert destination is not None
 
-def _rsync(source, destination, recursive=False):
-  if source == None or destination == None:
-    assert False, 'Both source and destination must be provided'
   opts = RSYNC_OPTIONS_RECURSIVE if recursive else RSYNC_OPTIONS
-  return _execute(RSYNC_PATH, opts.split() + [source, destination])
+  cmd  = [RSYNC_PATH] + opts.split() + [source, destination]
+
+  log.info('Executing: %s' % cmd)
+  if _dry_run:
+    return True
+
+  rsync = subprocess.Popen(cmd, stdin=subprocess.PIPE)
+  with rsync.stdin as list:
+    for i in iterable:
+      log.debug('rsync src: %s' % i)
+      list.write(i + os.path.sep + RSYNC_PATH_DELIMITER)
+    list.close()
+  return rsync.wait() == 0
 
 def _is_subdir(parent, dir):
   path_parent = os.path.abspath(parent) + os.path.sep
@@ -345,6 +379,14 @@ def _is_subdir(parent, dir):
   if len(path_dir) > len(path_parent) and path_dir.startswith(path_parent):
     return True
   return False
+
+def _generate_relative_path_list(paths, vroot):
+  if vroot == os.path.sep:
+    for path in paths:
+      yield path
+  else:
+    for path in paths:
+      yield os.path.relpath(path, start=vroot)
 
 ##### END:   Helper Functions #####
 
