@@ -292,7 +292,7 @@ class ItemQueue(object):
     self.dirs = filter(lambda x: os.path.exists(x), self.dirs)
     self.trees = filter(lambda x: os.path.exists(x), self.trees)
 
-    log.debug('After:  %s' % self)
+    log.debug('After: %s' % self)
     log.debug('Optimizing %d items is complete. Remaining items: %d'
       % (numitems, len(self)))
 
@@ -413,7 +413,8 @@ def init(source_path, destination_paths, dry_run=False, initial_sync=False):
       for path in destination_paths]
 
   log.info('Aggregating changes within: %ds' % TIMER_LIMIT)
-  log.info('Number of changes forcing synchronization: %d' % MAX_CHANGES)
+  log.info('Number of changes forcing queue optimization: %d' % MAX_CHANGES)
+  log.info('Number of remaining changes forcing synchronization: %d' % MAX_CHANGES_SYNC)
 
   _nworkers = len(destinations)
   log.warning('Total number of additional threads: %s' % _nworkers)
