@@ -345,6 +345,14 @@ class ProcessEvent(pyinotify.ProcessEvent):
     else:
       self.process_default(event)
 
+  def process_IN_Q_OVERFLOW(self, event):
+    # XXX This is a known issue and is not easy to resolve. Dynamically
+    # increasing inotify's max_queued_events variable through sysctl may
+    # be implemented in the future, however it needs super user privileges.
+    # For now, the only way to handle this is a full sync :-/
+    log.warning('Inotify event queue overflowed, this should not happen!')
+    queue_full_sync()
+
   def process_default(self, event):
     # Queue the path containing the event, non-recursively
     queue_item(Item(event.path))
