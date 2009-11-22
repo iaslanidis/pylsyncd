@@ -178,13 +178,13 @@ def usage():
   print 'Use: %s <directory to watch> <synchronization destinations>' \
       % (sys.argv[0],)
   print 'It is strongly advised to use absolute paths'
-  print 'Example: %s /file/data/cust/yesfm \
-         file02.priv file01.tlf2.mad.flumotion.net' % (sys.argv[0],)
+  print 'Example: %s /file/data/cust/<directory> \
+         file02.priv file03.priv' % (sys.argv[0],)
   print '''
   rsync result will be:
-      source = /file/data/cust/yesfm/
-      destination = (file02.priv:/file/data/cust/yesfm/
-                     file01.tlf2.mad.flumotion.net:/file/data/cust/yesfm/)
+      source = /file/data/cust/<directory>/
+      destination = (file02.priv:/file/data/cust/<directory>/
+                     file03.priv:/file/data/cust/<directory>/)
   '''
 
 # Function that synchronizes non-recursively a directory and its contents
