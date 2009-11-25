@@ -3,3 +3,4 @@
 * Check for race conditions.
 * Improve the way moves are processed.
 * Create a proper installation system.
+* Implement proper error handling.
