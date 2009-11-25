@@ -68,7 +68,7 @@ More examples:
                are rewritten to be relative to the virtual root at
                /tmp/source
 
-    pylsyncd . srv2.example.com srv3.example.net srv4.example.org
+    pylsyncd . srv2.example.com: srv3.example.net: srv4.example.org:
 
       source = "." (current working directory)
       target = homedir of current user at remote servers
@@ -76,7 +76,7 @@ More examples:
                remote paths are relative to the current dir
       method = rsync on top of remote shell protocoll, eg. rsh/ssh.
 
-    pylsyncd /var/www www-data@srv2.example.com
+    pylsyncd /var/www www-data@srv2.example.com:
 
       source = /var/www
       target = /var/www at remote server srv2.example.com, user www-data
