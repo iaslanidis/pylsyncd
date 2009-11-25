@@ -21,6 +21,25 @@ If you are interested in contributing or improving pylsyncd, do not
 hesitate to contact us.
 
 
+Quickstart
+----------
+If you're just starting out with pylsyncd, this might help you:
+
+    $ mkdir -p /tmp/{src,dst}
+    $ pylsyncd -d -i /tmp/src/./ /tmp/dst/
+    # ... watch the debug log and try to understand it ...
+
+While pylsyncd is running and monitoring /tmp/src, open another shell:
+
+    $ mkdir /tmp/src/foo
+    $ touch /tmp/src/foo/testfile
+    $ ... play around and watch the debug log ...
+
+The default aggregation window is 60 seconds, so your changes above are
+queued, optimized and finally synchronized. This allows heavy IO loads
+and does not interfere with your usual disk performance.
+
+
 Some notes on paths
 -------------------
 The pylsyncd source path must be local (we need to watch it with pyinotify)
