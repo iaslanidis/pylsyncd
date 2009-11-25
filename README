@@ -2,7 +2,7 @@ PYLSYNCD -- Python daemon for asynchronous data replication using rsync
 =======================================================================
 
     Project URL: http://code.google.com/p/pylsyncd/
-    Development: http://labs.feurix.org/admin/pylsyncd/
+    Development: http://github.com/iaslanidis/pylsyncd/
 
 Pylsyncd is a python implementation similar to lsyncd that uses rsync to
 synchronize local directories with several remote machines.
