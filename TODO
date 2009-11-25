@@ -2,3 +2,4 @@
 * Verify functionality against rsyncd.
 * Check for race conditions.
 * Improve the way moves are processed.
+* Create a proper installation system.
