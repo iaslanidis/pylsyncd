@@ -33,11 +33,22 @@ While pylsyncd is running and monitoring /tmp/src, open another shell:
 
     $ mkdir /tmp/src/foo
     $ touch /tmp/src/foo/testfile
-    $ ... play around and watch the debug log ...
+    # ... play around and watch the debug log ...
 
 The default aggregation window is 60 seconds, so your changes above are
-queued, optimized and finally synchronized. This allows heavy IO loads
-and does not interfere with your usual disk performance.
+queued, optimized and finally synchronized.
+
+
+Performance
+-----------
+You might want to lower the IO priority of pylsyncd, so the forked rsync
+processes won't interfere with your workload. This can be done using
+ionice(1) on Linux 2.6.13 or later (see man ionice(1)):
+
+    $ ionice -n7 pylsyncd ...
+
+In addition you can fine-tune some (currently hardcoded) limits in
+pylsyncd.py.
 
 
 Some notes on paths
